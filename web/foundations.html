@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foundations — the third algorithm</title>
+  <meta name="description" content="Three algorithms, witness-indistinguishability versus zero-knowledge, the inner-product opening statement, and the simulator's algebraic move." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23221c17'/><text x='8' y='12' font-family='Georgia,serif' font-style='italic' font-size='11' font-weight='600' text-anchor='middle' fill='%23e07a3c'>S</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">skip to content</a>
+
+<nav class="site-nav" aria-label="site navigation">
+  <div class="site-nav-inner" id="nav-inner">
+    <a href="/" class="site-nav-brand"><strong>S</strong>imulate</a>
+    <button class="nav-toggle" aria-label="toggle navigation" aria-controls="nav-inner" id="nav-toggle">menu</button>
+    <div class="site-nav-links">
+      <a href="/">Home</a>
+      <a href="/foundations.html" aria-current="page">Foundations</a>
+      <a href="/halo2.html">Halo 2</a>
+      <a href="/orchard.html">Orchard</a>
+      <a href="/reference.html">Reference</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page" id="main">
+
+  <header class="page-header">
+    <div class="eyebrow">part I &middot; foundations</div>
+    <h1>Three algorithms, not two.</h1>
+    <p class="byline">
+      Witness-indistinguishability is not zero-knowledge. The
+      simulator is the third algorithm; its existence is the
+      definition. This is the construction the rest of the page
+      runs.
+    </p>
+  </header>
+
+  <p class="drop-cap">
+    A zero-knowledge proof system over a relation
+    <code>R</code> is a triple <code>(Prove, Verify, Simulate)</code>.
+    The first two are familiar: <code>Prove(stmt, witness)</code>
+    returns a transcript; <code>Verify(stmt, transcript)</code>
+    returns accept or reject. The third,
+    <code>Simulate(stmt)</code>, takes only the public statement
+    and returns a transcript whose distribution is computationally
+    indistinguishable from a real prover's. Its existence is the
+    formal content of the ZK property: any information a verifier
+    could extract from an honest transcript is information the
+    simulator already produced from the statement alone, so the
+    transcript leaks nothing about the witness.
+  </p>
+
+  <p>
+    Production ZK code ships only the first two. The simulator
+    lives in the security proof of the paper, not in the codebase.
+    This page implements it, alongside the prover and verifier it
+    shadows.
+  </p>
+
+  <h2>Witness-indistinguishability versus zero-knowledge</h2>
+
+  <p>
+    Witness-indistinguishability (Feige and Shamir, 1990) is the
+    weaker cousin: a WI protocol guarantees that for any two valid
+    witnesses
+    <code>w<sub>0</sub>, w<sub>1</sub></code> for the same
+    statement, the distributions
+    <code>Prove(stmt, w<sub>0</sub>)</code> and
+    <code>Prove(stmt, w<sub>1</sub>)</code> are computationally
+    indistinguishable. WI does not require a simulator. ZK does:
+    the indistinguishability is between a real prover and an
+    algorithm with no witness at all.
+  </p>
+
+  <p>
+    For relations whose statement admits a sufficiently large
+    family of valid witnesses, the two claims collapse onto each
+    other under a uniform sampling argument: a simulator that
+    samples a witness uniformly from <code>R(stmt)</code> and runs
+    the honest prover satisfies both. The Orchard Action relation
+    is such a relation; the toy
+    <code>c = a&middot;b</code> relation
+    on pages II and III is too. For relations with a unique
+    witness, the gap between WI and ZK does not close this way;
+    closing it requires the byte-level no-witness construction
+    sketched on the
+    <a href="/reference.html#byte-level">Reference page</a>.
+  </p>
+
+  <h2>The statement these pages prove</h2>
+
+  <p>
+    The bottom layer of every Halo 2 proof is a polynomial
+    commitment opening. The prover commits to a polynomial
+    <code>p</code> under a Pedersen commitment with a fresh
+    blinder, then opens that commitment at a verifier-chosen point
+    <code>x</code> to a claimed value <code>y</code>:
+  </p>
+
+  <div class="formal-claim">
+    &exist; p &isin; 𝔽<sup>n</sup>, r &isin; 𝔽 &nbsp; such that &nbsp;
+    C = &lang;p, G&rang; + r&middot;H &nbsp; and &nbsp; p(x) = y
+  </div>
+
+  <p>
+    where <code>G = (G<sub>0</sub>, &hellip;, G<sub>n-1</sub>)</code>
+    and <code>H</code> are fixed Pasta-curve generators. The claim
+    is over <code>𝔽 = </code> the Pasta scalar field. The
+    inner-product argument compresses the opening into
+    <code>O(log n)</code> round messages, the last of which is
+    forced by a single linear equation in the random challenges.
+    That last forced value is what the simulator solves for.
+  </p>
+
+  <h2>The simulator's algebraic move</h2>
+
+  <p>
+    Given only <code>(C, x, y)</code>, the simulator never inspects
+    a witness. It walks the verifier's final check equation
+    backwards:
+  </p>
+
+  <ol class="algo">
+    <li>
+      <strong>Sample challenges.</strong> Pick
+      <code>u<sub>1</sub>, &hellip;, u<sub>k</sub></code> uniformly
+      at random from the Pasta scalar field. These are the values
+      the simulator will program the Fiat-Shamir transcript to
+      return.
+    </li>
+    <li>
+      <strong>Sample final scalars.</strong> Pick a uniform
+      <code>a</code> (the surviving entry of the folded vector)
+      and a uniform blinder <code>s</code>.
+    </li>
+    <li>
+      <strong>Compute the target.</strong> The folded point
+      <code>P<sub>k</sub> = a&middot;G<sub>final</sub> +
+      (a&middot;b<sub>final</sub>)&middot;U + s&middot;H</code>
+      depends only on sampled values and the public statement, so
+      it is fully determined. So is the starting point
+      <code>P<sub>0</sub> = C + y&middot;U</code>. The difference
+      <code>T = P<sub>k</sub> &minus; P<sub>0</sub></code> is what
+      the <code>(L<sub>i</sub>, R<sub>i</sub>)</code> sums must
+      hit.
+    </li>
+    <li>
+      <strong>Sample, then solve.</strong> Pick
+      <code>L<sub>1</sub>, &hellip;, L<sub>k</sub></code> and
+      <code>R<sub>1</sub>, &hellip;, R<sub>k-1</sub></code>
+      uniformly. The last <code>R<sub>k</sub></code> is forced by
+      a single linear equation with non-zero coefficient
+      (the challenge square <code>u<sub>k</sub><sup>2</sup></code>
+      is invertible in <code>𝔽</code>): there is a unique
+      <code>R<sub>k</sub></code> that closes the sum.
+    </li>
+  </ol>
+
+  <p>
+    Every component except the last <code>R<sub>k</sub></code> is
+    sampled uniformly; the last is forced but its marginal
+    distribution conditional on the others is also uniform over
+    the curve. The transcript verifies under the verifier's
+    programmed challenges. Under a real hash like Blake2b it does
+    not, and could not without breaking Blake2b's pseudorandomness.
+  </p>
+
+  <p>
+    The gate-equation generalization on page II handles a single
+    polynomial constraint by a parallel solve: sample the opening
+    evaluations <code>y<sub>A</sub>, y<sub>B</sub>,
+    y<sub>C</sub></code> uniformly, compute
+    <code>Z<sub>H</sub>(x<sub>3</sub>)</code>, and solve for
+    <code>y<sub>h</sub></code> so that
+    <code>y<sub>A</sub>&middot;y<sub>B</sub> &minus; y<sub>C</sub>
+    = y<sub>h</sub>&middot;Z<sub>H</sub>(x<sub>3</sub>)</code>
+    holds at the challenge point. Three samples and one inversion;
+    that's the entire content of the toy gated simulator.
+  </p>
+
+  <h2>What the simulator's existence proves</h2>
+
+  <p>
+    Once you have a simulator whose output is indistinguishable
+    from a real prover's, the rest of the ZK argument is one line:
+    any predicate <code>D</code> that a verifier could compute on
+    a real transcript is by definition computable on a simulator
+    transcript at the same advantage. Since the simulator never
+    saw the witness, neither did <code>D</code>. There is no
+    information about the witness left in the transcript for
+    <code>D</code> to extract.
+  </p>
+
+  <p>
+    This is why the simulator is the cryptographically load-bearing
+    algorithm. Without it, "zero-knowledge" reduces to "we have a
+    prover and a verifier and we haven't found a leak yet."
+  </p>
+
+  <div class="rule"></div>
+
+  <p>
+    The next page,
+    <a href="/halo2.html">Halo 2</a>, runs five experiments that
+    exercise this simulator construction on
+    <code>halo2_proofs</code> directly: the IPA, the multipoint
+    reduction, and the gated layer. The page after that,
+    <a href="/orchard.html">Orchard</a>, lifts the same idea to
+    the production Action circuit.
+  </p>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      <a href="/">Home</a> &middot;
+      <a href="/halo2.html">Halo 2</a> &middot;
+      <a href="/orchard.html">Orchard</a> &middot;
+      <a href="/reference.html">Reference</a>
+    </p>
+  </div>
+</footer>
+
+<script src="nav.js" type="module"></script>
+</body>
+</html>

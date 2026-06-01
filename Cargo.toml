@@ -1,0 +1,93 @@
+[package]
+name = "orchard-simulator"
+version = "0.1.0"
+edition = "2021"
+description = "ROM-programming zero-knowledge simulator for Halo 2 / Orchard-style IPA proofs"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["halo2"]
+# WebAssembly build, browser-side JS bindings for the halo2 + orchard
+# simulator entry points. Implies `halo2`; pulls in `orchard` only
+# transitively via `wasm-orchard`.
+wasm = ["halo2", "dep:wasm-bindgen", "dep:js-sys", "dep:serde", "dep:serde_json", "dep:serde-wasm-bindgen", "getrandom/js"]
+# WASM + real-Orchard integration. Lets the browser demo exercise the
+# production Orchard Action proof. Significantly larger than `wasm`
+# alone because the orchard crate pulls in Sinsemilla, Poseidon, and
+# the full halo2 gadget set.
+wasm-orchard = ["wasm", "orchard"]
+# Parallel-WASM variant: enables halo2's `multicore` feature, plus
+# `wasm-bindgen-rayon` to run halo2 FFTs and MSMs across a browser-side
+# thread pool backed by `SharedArrayBuffer`. Requires a nightly Rust
+# toolchain (the WASM atomics target needs `-Z build-std`) and an HTTP
+# server that sends `Cross-Origin-{Opener,Embedder}-Policy` headers so
+# the browser will enable `SharedArrayBuffer`. Compute remains 100%
+# client-side; the headers are pure browser-security metadata.
+# Typical wall-clock speedup on `Proof::create` for the Orchard Action
+# circuit: 4 to 8 times on 8 to 16 core hardware.
+wasm-orchard-parallel = [
+    "wasm-orchard",
+    "dep:rayon",
+    "dep:wasm-bindgen-rayon",
+    "halo2_proofs/multicore",
+    "orchard/multicore",
+]
+# Pull in upstream halo2_proofs so the simulator can drive
+# `halo2_proofs::plonk::create_proof` and have the bytes verified by
+# `verify_proof`. The crate has no proof primitives of its own; this
+# feature is the entry point to everything beyond the type
+# definitions.
+halo2 = ["dep:halo2_proofs"]
+# Pull in upstream orchard for the production Action circuit and
+# `Bundle<Authorized>` construction.
+orchard = ["halo2", "dep:orchard", "dep:serde", "dep:serde_json"]
+
+[dependencies]
+ff = "0.13"
+group = "0.13"
+pasta_curves = "0.5"
+rand = "0.8"
+rand_chacha = "0.3"
+blake2 = "0.10"
+getrandom = { version = "0.2", optional = false }
+wasm-bindgen = { version = "=0.2.114", optional = true }
+js-sys = { version = "0.3", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+halo2_proofs = { version = "0.3", default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"], optional = true }
+zeroize = { version = "1", features = ["zeroize_derive"] }
+# Phase 3: real orchard as a path dep, matching whatever versions it requires.
+# orchard's transitive `core2 0.3.x` is yanked on the registry but the cached
+# 0.3.3 is usable via `cargo update --precise 0.3.3 --offline`.
+orchard = { path = "/steam/rotko/orchard", default-features = false, features = ["circuit"], optional = true }
+# Parallel-WASM only. `rayon` for the host-CPU thread pool API;
+# `wasm-bindgen-rayon` for the browser-side initialisation that wires
+# rayon up to a `SharedArrayBuffer`-backed Web Worker pool.
+rayon = { version = "1.10", optional = true }
+wasm-bindgen-rayon = { version = "1.2", optional = true }
+
+[dev-dependencies]
+rand_chacha = "0.3"
+proptest = ">=1.0.0, <1.7.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "orchard-cli"
+path = "src/bin/orchard-cli.rs"
+required-features = ["orchard"]
+
+# Deny warnings in our own code while leaving upstream deprecations
+# (notably the patched `core2 0.3.3` which uses the deprecated
+# `std::alloc::LayoutErr` alias) untouched. `[lints]` scopes to this
+# crate only, unlike `RUSTFLAGS=-D warnings` which would cascade into
+# dependencies and break CI on third-party lints we don't own.
+[lints.rust]
+warnings = "deny"
+
+[patch.crates-io]
+# `core2 0.3` was yanked from crates.io; orchard's Cargo.lock pins 0.3.3.
+# Point at the cached registry source so dependency resolution succeeds.
+core2 = { path = "/home/alice/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.3.3" }

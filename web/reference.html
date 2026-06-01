@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reference — the third algorithm</title>
+  <meta name="description" content="Proof anatomy, comparison to other SNARK families, Orchard terminology, FAQ, references, and how to run it yourself." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23221c17'/><text x='8' y='12' font-family='Georgia,serif' font-style='italic' font-size='11' font-weight='600' text-anchor='middle' fill='%23e07a3c'>S</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">skip to content</a>
+
+<nav class="site-nav" aria-label="site navigation">
+  <div class="site-nav-inner" id="nav-inner">
+    <a href="/" class="site-nav-brand"><strong>S</strong>imulate</a>
+    <button class="nav-toggle" aria-label="toggle navigation" aria-controls="nav-inner" id="nav-toggle">menu</button>
+    <div class="site-nav-links">
+      <a href="/">Home</a>
+      <a href="/foundations.html">Foundations</a>
+      <a href="/halo2.html">Halo 2</a>
+      <a href="/orchard.html">Orchard</a>
+      <a href="/reference.html" aria-current="page">Reference</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page" id="main">
+
+  <header class="page-header">
+    <div class="eyebrow">part IV &middot; reference</div>
+    <h1>Reference.</h1>
+    <p class="byline">
+      Proof byte anatomy, comparison to other SNARK families,
+      Orchard-specific terminology, frequently asked questions,
+      paper references, and the commands to run the whole thing
+      yourself.
+    </p>
+  </header>
+
+  <h2 id="anatomy">Anatomy of a halo 2 Orchard proof</h2>
+
+  <p>
+    The 4992 bytes the Orchard simulator emits are 156 group-element
+    or scalar slots of 32 bytes each. Halo 2 emits them in a fixed
+    order determined by the PLONKish protocol structure. Fiat-Shamir
+    challenges (theta, beta, gamma, y, x, x_1, x_2, x_3, x_4) are not
+    written; the verifier re-derives them by hashing the transcript so
+    far. The structure below is for a one-Action Orchard proof;
+    multi-Action bundles multiply most regions by the number of
+    actions.
+  </p>
+
+  <ol>
+    <li>
+      <strong>Advice commitments.</strong> One curve point per advice
+      column. Orchard ships around ten advice columns; each is a
+      Pedersen commitment to that column's polynomial. Source:
+      <code>halo2_proofs::plonk::prover::create_proof</code>.
+    </li>
+    <li>
+      <strong>Lookup permuted commitments.</strong> Two curve points
+      per lookup argument (<code>A'</code> and <code>S'</code>).
+      Orchard uses several lookups for table-driven range checks.
+    </li>
+    <li>
+      <strong>Permutation Z + lookup Z.</strong> Permutation argument
+      running products, chunked by max_degree (the Orchard PK uses
+      three chunks), plus one Z per lookup.
+    </li>
+    <li>
+      <strong>Vanishing h pieces.</strong> The quotient polynomial
+      <code>h(X)</code>, split into chunks of degree
+      &le; n &minus; 1.
+    </li>
+    <li>
+      <strong>Evaluations at x.</strong> One scalar per (column,
+      rotation) pair: advice, fixed, permutation, lookup, h piece.
+      This is where the gate equation balance is checked.
+    </li>
+    <li>
+      <strong>Multipoint reduction.</strong> A single batched IPA at
+      point <code>x_3</code> combines openings at all rotation points
+      using random-linear-combination challenge <code>x_4</code>.
+    </li>
+    <li>
+      <strong>IPA tail.</strong>
+      <code>k = log<sub>2</sub>(n)</code> rounds of
+      <code>(L<sub>i</sub>, R<sub>i</sub>)</code> curve points, one
+      final scalar <code>a</code>, one final blinder. For Orchard's
+      <code>n = 2<sup>11</sup></code> polynomial, that's 11 IPA
+      rounds plus two final scalars.
+    </li>
+  </ol>
+
+  <h2 id="comparison">SNARK families compared</h2>
+
+  <p>
+    Halo 2's proof size is the largest in the well-known SNARK
+    families. The tradeoff is no trusted setup: every other line
+    below requires a multi-party ceremony whose output, if
+    compromised, lets an adversary forge proofs forever. Halo 2's
+    Pasta cycle plus the inner-product argument gets transparency
+    at the cost of larger proofs and slower verification.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>System</th><th>Curve</th><th>Proof size</th><th>Verify</th><th>Trusted setup</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Groth16</td><td>BN254</td>
+        <td class="num">192 B</td><td class="num">~3 ms</td>
+        <td class="bad-cell">per-circuit</td>
+      </tr>
+      <tr>
+        <td>PLONK (KZG)</td><td>BN254</td>
+        <td class="num">~480 B</td><td class="num">~10 ms</td>
+        <td class="bad-cell">universal</td>
+      </tr>
+      <tr>
+        <td>Bulletproofs</td><td>Ristretto</td>
+        <td class="num">~1.3 KB</td><td class="num">linear in n</td>
+        <td class="ok-cell">none</td>
+      </tr>
+      <tr class="highlight-row">
+        <td><strong>Halo 2 (Orchard)</strong></td><td>Pasta (vesta)</td>
+        <td class="num"><strong>4992 B</strong></td><td class="num">~30 ms</td>
+        <td class="ok-cell">none</td>
+      </tr>
+      <tr>
+        <td>STARK (FRI)</td><td>field-only</td>
+        <td class="num">~40 to 250 KB</td><td class="num">~10 to 100 ms</td>
+        <td class="ok-cell">none</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The 4992 bytes per Action is also why Orchard transactions are
+    large on chain: a single shielded transaction with multiple
+    actions can run to tens of kilobytes just for the proofs. That
+    cost is what buys Zcash a shielded pool that needs no trusted
+    setup ceremony. Sapling, the previous Zcash shielded pool, uses
+    Groth16 and required a multi-party setup ceremony; if any one
+    participant kept their secret randomness, that participant
+    could forge unlimited Sapling proofs. Orchard's Halo 2 design
+    eliminates that attack surface entirely at the cost of larger,
+    slower-to-verify proofs.
+  </p>
+
+  <h2 id="orchard-glossary">Orchard terminology</h2>
+
+  <p>
+    Terms used throughout the <a href="/orchard.html">Orchard
+    page</a>. The Zcash protocol specification defines each in
+    section 4.7.
+  </p>
+
+  <dl class="glossary">
+    <dt>anchor</dt>
+    <dd>The root of the Orchard note-commitment Merkle tree at the
+    moment the prover constructed the spend. A consensus node
+    accepts the proof only if this root appears in a recent enough
+    on-chain block, which is what prevents proving spends against a
+    non-existent tree state.</dd>
+
+    <dt>cv_net</dt>
+    <dd>The Pedersen value commitment to the net of (spend value)
+    minus (output value), blinded by a uniformly sampled trapdoor
+    <code>rcv</code>. The binding signature later proves the prover
+    knew the total trapdoor across all Actions, which is how Orchard
+    enforces value balance without revealing it.</dd>
+
+    <dt>nf_old</dt>
+    <dd>The nullifier:
+    <code>PRF<sub>nk</sub>(&rho;, &psi;, cm)</code>. A
+    deterministic function of the spent note plus the spender's
+    viewing key. Adding it to the Orchard nullifier set prevents
+    double-spending. Without the viewing key no outside observer can
+    link the nullifier to the spent note; with it, the spender can
+    prove the link.</dd>
+
+    <dt>rk</dt>
+    <dd>The spend-authorization verification key
+    (<code>ak</code>) randomized by a per-spend trapdoor
+    <code>&alpha;</code>. The randomization unlinks this Action's
+    signature from the spending key's underlying public key while
+    still letting the spender sign with the corresponding randomized
+    signing key.</dd>
+
+    <dt>cmx</dt>
+    <dd>The output note's commitment, x-coordinate only. The
+    Sinsemilla-derived note commitment is a Pasta curve point; Zcash
+    transactions carry only the x-coordinate to save space and the
+    verifier reconstructs y.</dd>
+
+    <dt>Sinsemilla</dt>
+    <dd>A SNARK-friendly hash function used in Orchard for note
+    commitments and the Merkle tree. Designed for a small circuit
+    footprint when proved inside Halo 2.</dd>
+
+    <dt>Poseidon</dt>
+    <dd>The other SNARK-friendly hash used in Orchard, for the
+    nullifier derivation. Optimised for low arithmetic-constraint
+    cost.</dd>
+
+    <dt>RedPallas</dt>
+    <dd>The signature scheme over the Pallas curve used for both the
+    binding signature and the per-Action spend-auth signature.
+    Rerandomisable (the <code>rk</code> mechanism), compatible with
+    batch verification.</dd>
+
+    <dt>FullViewingKey</dt>
+    <dd>The capability to see all incoming and outgoing notes for a
+    given spending key, without the ability to spend. Decomposes
+    into <code>ak</code> (auth) + <code>nk</code>
+    (nullifier-deriving) + <code>ovk</code>
+    (outgoing-viewing).</dd>
+  </dl>
+
+  <h2 id="faq">Frequently asked questions</h2>
+
+  <h3>What does "without witness" actually mean?</h3>
+  <p>
+    The simulator never has access to a specific spending key, note,
+    or Merkle path that someone wants to keep private. It samples
+    its own arbitrary witness (which happens to be a valid one for
+    some statement) and proves that. Because the Orchard Action
+    relation admits an enormous family of valid witnesses for any
+    given public Instance, an observer who sees only the public
+    Instance cannot tell which witness the prover used. That
+    property is what makes the verifier learn nothing about which
+    specific note was spent.
+  </p>
+
+  <h3>Why is the proof 4992 bytes when Groth16 proofs are 192 bytes?</h3>
+  <p>
+    Halo 2 is transparent: no per-circuit or universal trusted
+    setup. The construction trades proof size and verification time
+    for that property. Groth16 needs a per-circuit ceremony whose
+    toxic waste, if retained, lets an adversary forge proofs
+    forever. Zcash chose Halo 2 for Orchard specifically to
+    eliminate this attack surface.
+  </p>
+
+  <h3>Is this the same code Zcash uses on mainnet?</h3>
+  <p>
+    The proof-generation path calls
+    <code>orchard::circuit::Proof::create</code> and
+    <code>Proof::verify</code> directly. Those are the same
+    production wrappers around
+    <code>halo2_proofs::plonk::create_proof</code> and
+    <code>verify_proof</code> that
+    <code>zcashd</code> and
+    <code>zebrad</code> link against. The simulator's contribution
+    is sampling a witness uniformly and driving the production
+    prover with it. Two minor patches expose
+    <code>ProvingKey::inner()</code> and
+    <code>VerifyingKey::inner()</code> so a programmable transcript
+    can be plumbed in; otherwise the only available path uses
+    Blake2b.
+  </p>
+
+  <h3>Could I use this to fake a Zcash transaction?</h3>
+  <p>
+    No. The <a href="/orchard.html#mainnet-reject">"what would
+    happen on mainnet"</a> section on the Orchard page lists the
+    five non-cryptographic reasons a consensus node would reject
+    it. The simulator breaks no cryptographic property; it relies
+    on the protocol doing more than cryptography for soundness
+    against double-spend.
+  </p>
+
+  <h3>Why does the simulator return random-looking byte sequences?</h3>
+  <p>
+    That's the whole point. Honest Halo 2 proofs are uniform over
+    the proof byte space (conditional on the public Instance), and
+    the simulator's output is statistically indistinguishable from
+    honest output. If a reader could see a pattern in the bytes,
+    the protocol would leak. The two-proofs-same-witness panel on
+    the Orchard page makes this concrete: two independent proofs
+    of the same statement share roughly half their bytes by
+    coincidence, which is exactly what zero-knowledge requires.
+  </p>
+
+  <h3 id="byte-level">Why does Foundations mention a "byte-level no-witness construction" that isn't here?</h3>
+  <p>
+    For relations with a unique witness, the WI-to-ZK collapse on
+    multi-witness relations does not apply: the simulator can't
+    sample a different witness. Closing the gap requires constructing
+    the proof bytes directly from the public statement plus
+    programmed challenges, never sampling a witness in the first
+    place. The crate's
+    <code>halo2_simulator::zero_knowledge_proof_byte_level</code>
+    function sketches this path. It currently emits a
+    structurally-complete byte string that doesn't verify; closing
+    the constraint check is research-status work. For relations like
+    Orchard's, with many witnesses per Instance, the construction is
+    not needed; the WI sampling argument is the simulator.
+  </p>
+
+  <h2 id="references">References</h2>
+
+  <p>
+    Foundational papers for the constructions exercised on these
+    pages:
+  </p>
+
+  <ul>
+    <li>
+      <strong>Halo: Recursive Proof Composition without a Trusted
+      Setup.</strong> Bowe, Grigg, Hopwood. 2019.
+      <a href="https://eprint.iacr.org/2019/1021" rel="noopener">eprint.iacr.org/2019/1021</a>.
+      The construction that made transparent recursive SNARKs over
+      Pasta curves practical. Halo 2 is the production
+      implementation.
+    </li>
+    <li>
+      <strong>PLONK: Permutations over Lagrange-bases for Oecumenical
+      Noninteractive arguments of Knowledge.</strong>
+      Gabizon, Williamson, Ciobotaru. 2019.
+      <a href="https://eprint.iacr.org/2019/953" rel="noopener">eprint.iacr.org/2019/953</a>.
+      The PLONKish arithmetisation Halo 2 inherits: permutation
+      argument, lookup arguments, custom gates.
+    </li>
+    <li>
+      <strong>Bulletproofs: Short Proofs for Confidential
+      Transactions and More.</strong>
+      Bünz, Bootle, Boneh, Poelstra, Wuille, Maxwell. 2018.
+      <a href="https://eprint.iacr.org/2017/1066" rel="noopener">eprint.iacr.org/2017/1066</a>.
+      The inner-product argument Halo 2 uses for polynomial
+      commitment opening. Section 3 contains the IPA the simulator
+      programs.
+    </li>
+    <li>
+      <strong>Witness Indistinguishable and Witness Hiding
+      Protocols.</strong>
+      Feige, Shamir. 1990.
+      <a href="https://dl.acm.org/doi/10.1145/100216.100272" rel="noopener">dl.acm.org/doi/10.1145/100216.100272</a>.
+      The original definition separating WI from ZK. Section 4
+      contains the witness-uniformity argument the Orchard relation
+      satisfies.
+    </li>
+    <li>
+      <strong>Zcash protocol specification.</strong>
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">zips.z.cash/protocol/protocol.pdf</a>.
+      Section 4.7 documents the Orchard Action transfer; section
+      5.4 documents the binding signature and spend-auth signature.
+    </li>
+    <li>
+      <strong>ZIP 244: Transaction Identifier
+      Non-Malleability.</strong>
+      <a href="https://zips.z.cash/zip-0244" rel="noopener">zips.z.cash/zip-0244</a>.
+      The sighash derivation mainnet nodes use to authenticate the
+      bundle's signatures.
+    </li>
+    <li>
+      <strong>The Halo 2 book.</strong>
+      <a href="https://zcash.github.io/halo2/" rel="noopener">zcash.github.io/halo2/</a>.
+      Reference for proof structure, circuit API, and Fiat-Shamir
+      conventions.
+    </li>
+  </ul>
+
+  <h2 id="run-yourself">Running it yourself</h2>
+
+  <p>
+    Every part of these pages is reproducible from a clean checkout.
+    The crate is pure Rust plus a small JS glue layer. The
+    real-Orchard path uses the upstream <code>orchard</code> and
+    <code>halo2_proofs</code> crates plus two small upstream patches
+    to expose <code>ProvingKey::inner()</code> and
+    <code>VerifyingKey::inner()</code>.
+  </p>
+
+  <h3>Fast tests (about 3 seconds)</h3>
+  <pre><code>cargo test --features simulator,halo2,orchard</code></pre>
+  <p>
+    14 tests exercising the IPA, MulCircuit halo2 paths, and signed
+    bundle construction. None of these run the real Orchard prover
+    (gated under <code>#[ignore]</code> so the default run stays
+    fast).
+  </p>
+
+  <h3>Real Orchard tests (about 2.5 minutes)</h3>
+  <pre><code>cargo test --features orchard -- --ignored</code></pre>
+  <p>
+    9 tests driving the production Orchard prover end-to-end on
+    sampled witnesses: single Action verifies, multi-Action bundle
+    verifies, signed bundle verifies, ROM-programmable variant
+    verifies, tampered proof rejected, wrong Instance rejected,
+    arbitrary-value spend verifies, byte distributions uniform.
+  </p>
+
+  <h3>The single-threaded web demo</h3>
+  <pre><code>PROFILE=release FEATURES=wasm-orchard bash build-wasm.sh
+(cd web &amp;&amp; python3 serve.py 8000)
+xdg-open http://localhost:8000</code></pre>
+  <p>
+    Builds a ~4 MB single-threaded WASM module and serves the
+    static HTML/JS at <code>localhost:8000</code>. No backend;
+    everything runs in the browser tab.
+  </p>
+
+  <h3>The parallel web demo (4 to 8 times faster prove)</h3>
+  <pre><code>rustup component add rust-src --toolchain nightly
+bash build-wasm-parallel.sh
+(cd web &amp;&amp; python3 serve.py 8000)
+xdg-open http://localhost:8000</code></pre>
+  <p>
+    Builds a ~7 MB parallel WASM module via
+    <code>wasm-bindgen-rayon</code> so halo2's FFT and MSM steps
+    inside <code>Proof::create</code> dispatch across a
+    <code>SharedArrayBuffer</code>-backed pool of inner Web Workers.
+    Requires a nightly Rust toolchain and the bundled
+    <code>serve.py</code>, which sets the
+    <code>Cross-Origin-{Opener,Embedder}-Policy</code> headers the
+    browser needs to enable <code>SharedArrayBuffer</code>. The page
+    auto-detects the parallel build at load time and falls back to
+    the single-threaded one if <code>pkg-parallel/</code> isn't
+    present. Compute remains 100% client-side; the headers are pure
+    browser-security metadata.
+  </p>
+
+  <h3>The CLI</h3>
+  <pre><code>cargo run --features orchard --release --bin orchard-cli -- --seed 42 --pretty</code></pre>
+  <p>
+    Runs the same simulator from the command line, no browser. The
+    JSON output matches the schema the Orchard page's "Download
+    proof as JSON" button produces, so a CLI-generated proof and a
+    browser-generated proof can be diffed structurally or pasted
+    into either environment for verification.
+  </p>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      <a href="/">Home</a> &middot;
+      <a href="/foundations.html">Foundations</a> &middot;
+      <a href="/halo2.html">Halo 2</a> &middot;
+      <a href="/orchard.html">Orchard</a>
+    </p>
+    <dl>
+      <dt>License</dt>
+      <dd><code>MIT OR Apache-2.0</code>. The patched upstream
+      <code>orchard</code> and <code>halo2_proofs</code> are
+      themselves <code>MIT OR Apache-2.0</code>.</dd>
+      <dt>Reproducibility</dt>
+      <dd>
+        Every byte the page produces is determined by the URL hash
+        seed plus the upstream crate versions pinned in
+        <code>Cargo.lock</code>.
+      </dd>
+    </dl>
+  </div>
+</footer>
+
+<script src="nav.js" type="module"></script>
+</body>
+</html>

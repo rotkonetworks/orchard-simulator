@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>The third algorithm — orchard-simulator</title>
+  <meta name="description" content="A working zero-knowledge simulator for Halo 2's inner-product argument and the production Zcash Orchard Action proof. Runs in the browser." />
+  <meta property="og:type" content="article" />
+  <meta property="og:title" content="The third algorithm" />
+  <meta property="og:description" content="A working zero-knowledge simulator for Halo 2's inner-product argument and the production Zcash Orchard Action proof." />
+  <meta name="twitter:card" content="summary" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23221c17'/><text x='8' y='12' font-family='Georgia,serif' font-style='italic' font-size='11' font-weight='600' text-anchor='middle' fill='%23e07a3c'>S</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">skip to content</a>
+
+<nav class="site-nav" aria-label="site navigation">
+  <div class="site-nav-inner" id="nav-inner">
+    <a href="/" class="site-nav-brand"><strong>S</strong>imulate</a>
+    <button class="nav-toggle" aria-label="toggle navigation" aria-controls="nav-inner" id="nav-toggle">menu</button>
+    <div class="site-nav-links">
+      <a href="/" aria-current="page">Home</a>
+      <a href="/foundations.html">Foundations</a>
+      <a href="/halo2.html">Halo 2</a>
+      <a href="/orchard.html">Orchard</a>
+      <a href="/reference.html">Reference</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="eyebrow">an executable simulator</div>
+  <h1>The third <span class="accent">algorithm</span>.</h1>
+  <p class="hero-deck">
+    Production zero-knowledge code ships <code>Prove</code> and
+    <code>Verify</code>. The third algorithm,
+    <code>Simulate</code>, is what makes a proof zero-knowledge in
+    the first place, and is almost never implemented outside of
+    security proofs. Here is one for Halo 2's inner-product argument
+    and for the production Zcash Orchard Action proof, in the
+    browser.
+  </p>
+  <div class="hero-meta">
+    <span>halo2_proofs 0.3</span>
+    <span>orchard 0.12</span>
+    <span>Pasta curves</span>
+    <span>~3 s per Orchard proof (rayon, 32 threads)</span>
+  </div>
+</header>
+
+<main class="page" id="main">
+
+  <p class="drop-cap">
+    A zero-knowledge proof system has three algorithms. Most
+    engineers can name two. The third lives in the security proof:
+    given only the public statement, the simulator constructs an
+    accepting transcript that the verifier cannot distinguish from a
+    real prover's. Its existence is what guarantees the real
+    prover's transcript leaks nothing about the witness.
+  </p>
+
+  <p>
+    The four sections below build the argument up from the
+    inner-product argument that underlies Halo 2, through the
+    multipoint reduction and a single gate, to the production
+    Orchard Action circuit. Each section is a separate page; each
+    page is reproducible from the seed in its URL hash.
+  </p>
+
+  <div class="toc-cards">
+    <a class="toc-card" href="/foundations.html">
+      <div class="toc-card-number">I.</div>
+      <div class="toc-card-title">Foundations</div>
+      <div class="toc-card-desc">
+        Three algorithms, not two. Witness-indistinguishability
+        versus zero-knowledge. The statement to be proved. The
+        simulator's algebraic move.
+      </div>
+    </a>
+    <a class="toc-card" href="/halo2.html">
+      <div class="toc-card-number">II.</div>
+      <div class="toc-card-title">Halo 2</div>
+      <div class="toc-card-desc">
+        The simulator on Halo 2's inner-product argument, the
+        multipoint reduction, and a single gate. Five experiments
+        running through <code>halo2_proofs</code> directly.
+      </div>
+    </a>
+    <a class="toc-card" href="/orchard.html">
+      <div class="toc-card-number">III.</div>
+      <div class="toc-card-title">Orchard</div>
+      <div class="toc-card-desc">
+        The simulator on the production Zcash Orchard Action
+        circuit. 4992-byte proofs, full
+        <code>Bundle&lt;Authorized&gt;</code>, soundness check,
+        signature verification, byte-level reproducibility.
+      </div>
+    </a>
+    <a class="toc-card" href="/reference.html">
+      <div class="toc-card-number">IV.</div>
+      <div class="toc-card-title">Reference</div>
+      <div class="toc-card-desc">
+        Proof anatomy. Comparison to other SNARK families. Why a
+        mainnet node still rejects this. Glossary, FAQ, references,
+        and how to run the whole thing yourself.
+      </div>
+    </a>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2>What it is, what it isn't</h2>
+
+  <p>
+    It is a working <code>Simulate</code> algorithm for two ZK
+    relations: a teaching layer over Halo 2's inner-product argument
+    (Pages II), and the production Orchard Action relation as
+    deployed in Zcash (Page III). The Orchard path drives upstream
+    <code>orchard::circuit::Proof::create</code> and
+    <code>Proof::verify</code> directly, against the same proving
+    and verifying keys a mainnet node builds.
+  </p>
+
+  <p>
+    It is not a production prover. It is not Zcash. It does not let
+    you spend ZEC. A consensus node would reject these proofs for
+    reasons that have nothing to do with cryptography: the anchor
+    is uniformly random, the spent note doesn't exist on chain, the
+    sighash isn't bound to a real transaction. The
+    <a href="/orchard.html#mainnet-reject">Orchard page</a> spells
+    out the five reasons.
+  </p>
+
+  <h2>How to read this</h2>
+
+  <p>
+    Linear reading from <a href="/foundations.html">Foundations</a>
+    onward is the intended path. Each experiment exposes its seed in
+    the URL hash; the same seed reproduces byte-identical output.
+    The Orchard simulator on Page III takes around three seconds per
+    proof on a modern desktop with the parallel WASM build; if you
+    only want to see one running proof, that is the page to visit.
+  </p>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      Compiled in pure Rust to WebAssembly. Runs entirely in your
+      browser. No backend, no analytics, no cookies. Open the
+      devtools network panel and reload to confirm: HTML, CSS, JS,
+      WASM, nothing else.
+    </p>
+    <dl>
+      <dt>License</dt>
+      <dd><code>MIT OR Apache-2.0</code>. The patched upstream
+      <code>orchard</code> and <code>halo2_proofs</code> are
+      themselves <code>MIT OR Apache-2.0</code>.</dd>
+      <dt>Reproducibility</dt>
+      <dd>
+        Every byte the page produces is determined by the URL hash
+        seed plus the upstream crate versions pinned in
+        <code>Cargo.lock</code>. Same git revision in the same Rust
+        toolchain yields the same <code>orchard_simulator_bg.wasm</code>
+        bytes.
+      </dd>
+      <dt>Source</dt>
+      <dd>
+        <a href="https://github.com/rotkonetworks/orchard-simulator" rel="noopener">github.com/rotkonetworks/orchard-simulator</a>.
+        The crate is a Rust library plus a <code>cargo run --bin
+        orchard-cli</code> binary plus the static HTML/JS in
+        <code>web/</code>.
+      </dd>
+    </dl>
+  </div>
+</footer>
+
+<script src="nav.js" type="module"></script>
+</body>
+</html>

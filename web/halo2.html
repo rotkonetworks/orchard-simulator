@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Halo 2 — the third algorithm</title>
+  <meta name="description" content="The simulator construction exercised directly on halo2_proofs::plonk::create_proof, against a multiplication-gate circuit on Pasta curves." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23221c17'/><text x='8' y='12' font-family='Georgia,serif' font-style='italic' font-size='11' font-weight='600' text-anchor='middle' fill='%23e07a3c'>S</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">skip to content</a>
+
+<nav class="site-nav" aria-label="site navigation">
+  <div class="site-nav-inner" id="nav-inner">
+    <a href="/" class="site-nav-brand"><strong>S</strong>imulate</a>
+    <button class="nav-toggle" aria-label="toggle navigation" aria-controls="nav-inner" id="nav-toggle">menu</button>
+    <div class="site-nav-links">
+      <a href="/">Home</a>
+      <a href="/foundations.html">Foundations</a>
+      <a href="/halo2.html" aria-current="page">Halo 2</a>
+      <a href="/orchard.html">Orchard</a>
+      <a href="/reference.html">Reference</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page" id="main">
+
+  <header class="page-header">
+    <div class="eyebrow">part II &middot; halo 2</div>
+    <h1>The simulator on <code>halo2_proofs</code>.</h1>
+    <p class="byline">
+      Three runs of the same circuit through
+      <code>halo2_proofs::plonk::create_proof</code>: an honest
+      prover, a witness-indistinguishable simulator, and a
+      ROM-programmable zero-knowledge simulator. The verifier in
+      every case is the upstream
+      <code>halo2_proofs::plonk::verify_proof</code>.
+    </p>
+  </header>
+
+  <p class="drop-cap">
+    The circuit is small on purpose. <code>MulCircuit</code>
+    asserts a single multiplication gate
+    <code>q<sub>mul</sub> &middot; (a &middot; b &minus; c) = 0</code>
+    on three advice columns and one instance column carrying
+    <code>c</code>. There are no lookups, no rotations beyond the
+    current row, and one selector. The witness is the pair
+    <code>(a, b)</code>; the public statement is the single scalar
+    <code>c</code>. The relation
+    <code>R = { ((a, b), c) : a &middot; b = c }</code> admits
+    every nonzero <code>a</code> as half of a valid witness, so the
+    witness set is parameterised by a single field element. This
+    multi-witness structure is what lets the WI simulator on the
+    next slide work without forcing any value.
+  </p>
+
+  <p>
+    All three runs below pass through the same upstream prover and
+    verifier. The only thing the simulator changes is which
+    transcript implementation
+    <code>create_proof</code> drives, and which witness it samples
+    along the way.
+  </p>
+
+  <h2>Run it</h2>
+
+  <p>
+    Keygen runs once. After that, each click takes well under a
+    second on a desktop. The two seeds are exposed in the URL hash;
+    same pair, same byte-identical output.
+  </p>
+
+  <div class="run-strip">
+    <label>c seed <input id="halo2-c-seed" type="number" min="0" value="42" /></label>
+    <label>witness seed <input id="halo2-w-seed" type="number" min="0" value="100" /></label>
+    <button id="halo2-run" type="button" disabled>Run halo2 demo</button>
+    <span id="halo2-status" class="run-status">WASM loading…</span>
+  </div>
+
+  <div id="halo2-progress" class="progress" hidden role="status" aria-live="polite">
+    <div class="progress-row">
+      <span class="progress-phase" id="halo2-progress-phase"></span>
+      <span class="progress-time" id="halo2-progress-time">0.0 s</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill"></div></div>
+  </div>
+
+  <div id="halo2-output" hidden>
+
+    <h3>The honest prover</h3>
+    <p>
+      A standard
+      <code>halo2_proofs::plonk::create_proof</code> call. Sample a
+      witness <code>(a, b)</code> with
+      <code>b = c &middot; a<sup>&minus;1</sup></code> for a uniformly
+      sampled nonzero <code>a</code>; commit, vanish, evaluate, and
+      open. The Fiat-Shamir transcript is
+      <code>Blake2bWrite</code>. The verifier accepts under
+      <code>Blake2bRead</code>; nothing surprising.
+    </p>
+    <div class="verdict-tile" id="halo2-honest-verdict">
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="halo2-honest-headline"></div>
+        <div class="verdict-sub" id="halo2-honest-sub"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hex-field">
+        <span class="hex-field-name">head (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-honest-head">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-honest-head" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">tail (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-honest-tail">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-honest-tail" type="button">copy</button>
+      </div>
+    </div>
+
+    <h3>The witness-indistinguishable simulator</h3>
+    <p>
+      Same circuit, same public <code>c</code>, but the simulator
+      samples a different nonzero <code>a</code> from the witness
+      set and runs the honest prover with it. Both honest and
+      simulator drive the same upstream
+      <code>create_proof</code>; the output bytes verify under
+      <code>Blake2bRead</code> just like the honest run. The WI
+      claim is: a verifier with access only to the proof bytes and
+      the public statement cannot distinguish the two witnesses.
+    </p>
+    <div class="verdict-tile" id="halo2-wi-verdict">
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="halo2-wi-headline"></div>
+        <div class="verdict-sub" id="halo2-wi-sub"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hex-field">
+        <span class="hex-field-name">head (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-wi-head">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-wi-head" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">tail (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-wi-tail">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-wi-tail" type="button">copy</button>
+      </div>
+    </div>
+
+    <h3>The ROM-programmable zero-knowledge simulator</h3>
+    <p>
+      Same circuit, same <code>c</code>. The simulator chooses a
+      sequence of Fiat-Shamir challenges uniformly at random in
+      advance, then runs
+      <code>create_proof</code> with the programmable transcript
+      wrapper
+      <code>ProgrammableHalo2Write</code> so the prover sees those
+      challenges instead of hashing. The byte output verifies under
+      the matching
+      <code>ProgrammableHalo2Read</code> and is rejected by
+      <code>Blake2bRead</code>. Acceptance under the programmable
+      transcript is the zero-knowledge claim; rejection under
+      Blake2b is the soundness side of the same coin.
+    </p>
+    <div class="verdict-tile" id="halo2-zk-verdict">
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="halo2-zk-headline"></div>
+        <div class="verdict-sub" id="halo2-zk-sub"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hex-field">
+        <span class="hex-field-name">head (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-zk-head">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-zk-head" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">tail (64 B)</span>
+        <span class="hex-field-value"><code id="halo2-zk-tail">-</code></span>
+        <button class="copy-btn" data-copy-target="halo2-zk-tail" type="button">copy</button>
+      </div>
+    </div>
+
+    <h4>Programmed challenges</h4>
+    <p>
+      The 32-element list the simulator pre-committed to before
+      running <code>create_proof</code>. The Pasta scalar field has
+      ~254 bits, so these are 32-byte hex strings. The prover never
+      hashes anything; it reads the next one off the queue every
+      time it would have squeezed a Blake2b output.
+    </p>
+    <div class="card" id="halo2-challenges-card"></div>
+
+  </div>
+
+  <div class="rule"></div>
+
+  <h2>What this shows</h2>
+
+  <p>
+    Three runs of the same circuit, three different transcripts,
+    one upstream prover and verifier. The acceptance pattern
+    determines what each run proves:
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>Run</th><th>Witness</th><th>Transcript</th><th>Blake2b verify</th><th>Programmable verify</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>honest</td>
+        <td>real (sampled)</td>
+        <td>Blake2bWrite</td>
+        <td class="ok-cell">accept</td>
+        <td>n/a</td>
+      </tr>
+      <tr>
+        <td>WI simulator</td>
+        <td>different sample</td>
+        <td>Blake2bWrite</td>
+        <td class="ok-cell">accept</td>
+        <td>n/a</td>
+      </tr>
+      <tr>
+        <td>ZK simulator</td>
+        <td>different sample</td>
+        <td>ProgrammableHalo2Write</td>
+        <td class="bad-cell">reject</td>
+        <td class="ok-cell">accept</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>
+    The WI simulator's acceptance under Blake2b proves
+    witness-indistinguishability: the verifier had to accept the
+    proof of a different witness, with the same public statement,
+    indistinguishably. The ZK simulator's pattern (acceptance under
+    programmable, rejection under Blake2b) proves zero-knowledge
+    in the random-oracle model: the simulator constructed an
+    accepting transcript using only the public statement and the
+    programmability power of the abstract oracle, with no leakage
+    back to the witness.
+  </p>
+
+  <p>
+    Page III, <a href="/orchard.html">Orchard</a>, lifts both ideas
+    to the production Action circuit. Same WI sampling argument,
+    same programmable transcript trick, vastly larger circuit.
+  </p>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      <a href="/">Home</a> &middot;
+      <a href="/foundations.html">Foundations</a> &middot;
+      <a href="/orchard.html">Orchard</a> &middot;
+      <a href="/reference.html">Reference</a>
+    </p>
+  </div>
+</footer>
+
+<script src="nav.js" type="module"></script>
+<script src="halo2.js" type="module"></script>
+</body>
+</html>

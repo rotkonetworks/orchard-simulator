@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orchard — the third algorithm</title>
+  <meta name="description" content="A zero-knowledge simulator for the production Zcash Orchard Action proof. 4992-byte proofs through the production prover and verifier, running in the browser." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23221c17'/><text x='8' y='12' font-family='Georgia,serif' font-style='italic' font-size='11' font-weight='600' text-anchor='middle' fill='%23e07a3c'>S</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">skip to content</a>
+
+<nav class="site-nav" aria-label="site navigation">
+  <div class="site-nav-inner" id="nav-inner">
+    <a href="/" class="site-nav-brand"><strong>S</strong>imulate</a>
+    <button class="nav-toggle" aria-label="toggle navigation" aria-controls="nav-inner" id="nav-toggle">menu</button>
+    <div class="site-nav-links">
+      <a href="/">Home</a>
+      <a href="/foundations.html">Foundations</a>
+      <a href="/halo2.html">Halo 2</a>
+      <a href="/orchard.html" aria-current="page">Orchard</a>
+      <a href="/reference.html">Reference</a>
+    </div>
+  </div>
+</nav>
+
+<main class="page page-wide" id="main">
+
+  <header class="page-header">
+    <div class="eyebrow">part III &middot; orchard</div>
+    <h1>The simulator on production Orchard.</h1>
+    <p class="byline">
+      The same <code>orchard::circuit::Circuit</code> and
+      <code>halo2_proofs::plonk::create_proof</code> that ship in
+      <code>zcashd</code> and <code>zebrad</code>, driven from a
+      browser-side rayon thread pool. Witness-indistinguishable
+      zero-knowledge on the real Zcash Orchard Action relation.
+    </p>
+  </header>
+
+  <p class="drop-cap">
+    The Orchard Action relation is the production target. A valid
+    Action witness is a tuple
+    <code>(SpendingKey, Note, MerklePath, OutputNote, &alpha;,
+    rcv)</code> satisfying the on-chain constraints: the spent
+    note's commitment must be in the Merkle tree at the claimed
+    anchor, the nullifier must equal
+    <code>PRF<sub>nk</sub>(&rho;, &psi;, cm)</code>, the value
+    commitment must be a Pedersen commitment to
+    <code>(spend &minus; output)</code> with trapdoor
+    <code>rcv</code>, and so on. The
+    <a href="https://zips.z.cash/protocol/protocol.pdf"
+       rel="noopener">Zcash protocol specification</a> documents
+    the full relation in section 4.7.
+  </p>
+
+  <p>
+    The simulator below samples a uniformly random valid witness,
+    builds the production <code>orchard::circuit::Circuit</code>
+    from it, runs <code>halo2_proofs::plonk::create_proof</code>,
+    and presents the resulting 4992 bytes to the production
+    <code>orchard::circuit::Proof::verify</code>. The verifier
+    accepts. Two patches to the upstream
+    <code>orchard</code> crate expose
+    <code>ProvingKey::inner()</code> and
+    <code>VerifyingKey::inner()</code> so the same path can also
+    run with a programmable Fiat-Shamir transcript; otherwise
+    nothing in <code>orchard</code> or
+    <code>halo2_proofs</code> is modified.
+  </p>
+
+  <h2>Run it</h2>
+
+  <p>
+    First click pays for the proving-key build (around six seconds
+    on a desktop, more in the browser, cached afterward). Each
+    proof from then on takes roughly three seconds on the parallel
+    WASM build, or thirty seconds on the single-threaded build.
+    The seed is exposed in the URL hash so the run is reproducible.
+  </p>
+
+  <div class="run-strip">
+    <button id="orchard-run" type="button" disabled>Run Orchard simulator</button>
+    <button id="orchard-run-batch" type="button" class="secondary" disabled>Run 3 random seeds</button>
+    <span id="orchard-status" class="run-status">WASM loading…</span>
+  </div>
+
+  <div id="orchard-progress" class="progress" hidden role="status" aria-live="polite">
+    <div class="progress-row">
+      <span class="progress-phase" id="orch-progress-phase"></span>
+      <span class="progress-time" id="orch-progress-time">0.0 s</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill"></div></div>
+    <div class="progress-hint">running on a Web Worker; this tab stays responsive.</div>
+  </div>
+
+  <div id="orchard-stats" class="stats" hidden aria-label="session statistics">
+    <span class="stat">
+      <span class="stat-label">proofs generated</span>
+      <span class="stat-value" id="stat-proofs-generated">0</span>
+    </span>
+    <span class="stat">
+      <span class="stat-label">verifies run</span>
+      <span class="stat-value" id="stat-verifies-run">0</span>
+    </span>
+    <span class="stat">
+      <span class="stat-label">tampers rejected</span>
+      <span class="stat-value" id="stat-tampers-rejected">0</span>
+    </span>
+    <span class="stat">
+      <span class="stat-label">total prove time</span>
+      <span class="stat-value" id="stat-prove-time">0 s</span>
+    </span>
+    <button id="stats-reset" type="button" class="stats-reset">reset</button>
+  </div>
+
+  <div id="orchard-output" hidden>
+
+    <div class="verdict-tile" id="orchard-verdict">
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="orchard-headline"></div>
+        <div class="verdict-sub" id="orchard-sub"></div>
+      </div>
+    </div>
+
+    <h3>Data flow</h3>
+    <p>
+      Each Run drives four stages of the production code path. The
+      diagram below lights up live as the worker walks them.
+    </p>
+    <div class="flow" aria-label="four-stage data flow">
+      <div class="flow-stage" data-stage="1">
+        <div class="flow-stage-head">
+          <span class="flow-stage-num">1</span>
+          <span class="flow-stage-name">sample witness</span>
+        </div>
+        <div class="flow-stage-detail">
+          <code>SpendingKey::from_bytes</code>,
+          <code>Note::from_parts</code>,
+          <code>MerklePath::from_parts</code>,
+          <code>Rho::from_bytes</code>
+        </div>
+        <div class="flow-stage-out">spend, output, &alpha;, rcv</div>
+        <div class="flow-stage-timing" data-stage-timing="1"></div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-stage" data-stage="2">
+        <div class="flow-stage-head">
+          <span class="flow-stage-num">2</span>
+          <span class="flow-stage-name">build circuit</span>
+        </div>
+        <div class="flow-stage-detail">
+          <code>orchard::circuit::Circuit::from_action_context</code>
+        </div>
+        <div class="flow-stage-out">Circuit&lt;pallas::Base&gt;</div>
+        <div class="flow-stage-timing" data-stage-timing="2"></div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-stage" data-stage="3">
+        <div class="flow-stage-head">
+          <span class="flow-stage-num">3</span>
+          <span class="flow-stage-name">create proof</span>
+        </div>
+        <div class="flow-stage-detail">
+          <code>halo2_proofs::plonk::create_proof</code>
+          on Pasta <code>vesta::Affine</code>
+        </div>
+        <div class="flow-stage-out">4992 bytes</div>
+        <div class="flow-stage-timing" data-stage-timing="3"></div>
+      </div>
+      <div class="flow-arrow" aria-hidden="true">→</div>
+      <div class="flow-stage" data-stage="4">
+        <div class="flow-stage-head">
+          <span class="flow-stage-num">4</span>
+          <span class="flow-stage-name">verify proof</span>
+        </div>
+        <div class="flow-stage-detail">
+          <code>halo2_proofs::plonk::verify_proof</code> against
+          the public Instance
+        </div>
+        <div class="flow-stage-out">accept / reject</div>
+        <div class="flow-stage-timing" data-stage-timing="4"></div>
+      </div>
+    </div>
+
+    <h3>The public Instance</h3>
+    <p>
+      These nine field elements are the public statement; everything
+      the prover used to build the proof (spending key, spent note,
+      Merkle path, output note) is invisible to the verifier. The
+      <a href="/reference.html#orchard-glossary">Reference page</a>
+      defines each term.
+    </p>
+
+    <div class="card">
+      <div class="hex-field">
+        <span class="hex-field-name">anchor</span>
+        <span class="hex-field-value"><code id="orch-i-anchor">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-anchor" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">cv_net.x</span>
+        <span class="hex-field-value"><code id="orch-i-cv_net_x">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-cv_net_x" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">cv_net.y</span>
+        <span class="hex-field-value"><code id="orch-i-cv_net_y">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-cv_net_y" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">nf_old</span>
+        <span class="hex-field-value"><code id="orch-i-nf_old">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-nf_old" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">rk</span>
+        <span class="hex-field-value"><code id="orch-i-rk">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-rk" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">cmx</span>
+        <span class="hex-field-value"><code id="orch-i-cmx">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-i-cmx" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">enable_spend</span>
+        <span class="hex-field-value"><code id="orch-i-enable-spend">-</code></span>
+        <span></span>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">enable_output</span>
+        <span class="hex-field-value"><code id="orch-i-enable-output">-</code></span>
+        <span></span>
+      </div>
+    </div>
+
+    <h3>The proof bytes</h3>
+    <p>
+      First and last 64 bytes of the 4992-byte proof. The full hex
+      is one click away; the <a href="/reference.html#anatomy">
+      anatomy section on the Reference page</a> walks through what
+      the byte ranges contain.
+    </p>
+    <div class="card">
+      <div class="hex-field">
+        <span class="hex-field-name">head (64 B)</span>
+        <span class="hex-field-value"><code id="orch-proof-head">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-proof-head" type="button">copy</button>
+      </div>
+      <div class="hex-field">
+        <span class="hex-field-name">tail (64 B)</span>
+        <span class="hex-field-value"><code id="orch-proof-tail">-</code></span>
+        <button class="copy-btn" data-copy-target="orch-proof-tail" type="button">copy</button>
+      </div>
+    </div>
+    <details>
+      <summary>Show all 4992 bytes</summary>
+      <div class="run-strip">
+        <button id="orch-proof-load-full" class="copy-btn" type="button" disabled>load full hex</button>
+        <button class="copy-btn" data-copy-target="orch-proof-full" type="button">copy all</button>
+      </div>
+      <pre><code id="orch-proof-full">click "load full hex" to populate (9984 hex characters)</code></pre>
+    </details>
+    <div class="run-strip">
+      <button id="orch-download-proof" class="secondary" type="button" disabled>Download proof as JSON</button>
+      <span id="orch-download-status" class="run-status"></span>
+    </div>
+
+    <h2>Soundness: tamper with one byte</h2>
+    <p>
+      A PLONKish proof has no malleation slack; any single bit-flip
+      makes <code>verify_proof</code> reject. Three buttons below
+      flip a byte at head, middle, and tail of the cached proof
+      and re-run verification.
+    </p>
+    <div class="run-strip">
+      <button id="orch-tamper-head" class="secondary" type="button" disabled>flip byte 0</button>
+      <button id="orch-tamper-mid"  class="secondary" type="button" disabled>flip byte 2496</button>
+      <button id="orch-tamper-tail" class="secondary" type="button" disabled>flip byte 4991</button>
+    </div>
+    <div id="orch-tamper-result" class="verdict-tile" hidden>
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="orch-tamper-headline"></div>
+        <div class="verdict-sub" id="orch-tamper-sub"></div>
+      </div>
+    </div>
+
+    <h2>Zero-knowledge at the byte level</h2>
+    <p>
+      Same witness, same Instance, two independent calls to
+      <code>Proof::create</code> with different proving RNGs. Both
+      verify. The bytes share no information beyond their
+      structural format; if the proof bytes leaked anything about
+      the witness, the two sequences would correlate.
+    </p>
+    <div class="run-strip">
+      <button id="orch-two-proofs-run" type="button" disabled>Run two proofs, same witness, different RNG</button>
+    </div>
+    <div id="orch-two-proofs-output" hidden>
+      <div class="verdict-tile" id="orch-two-proofs-verdict">
+        <div class="icon" aria-hidden="true"></div>
+        <div>
+          <div class="verdict-headline" id="orch-two-proofs-headline"></div>
+          <div class="verdict-sub" id="orch-two-proofs-sub"></div>
+        </div>
+      </div>
+      <div class="card" id="orch-two-proofs-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.6rem;"></div>
+      <div class="card">
+        <div class="hex-field">
+          <span class="hex-field-name">A head</span>
+          <span class="hex-field-value"><code id="orch-two-proofs-a-hex">-</code></span>
+          <button class="copy-btn" data-copy-target="orch-two-proofs-a-hex" type="button">copy</button>
+        </div>
+        <div class="hex-field">
+          <span class="hex-field-name">B head</span>
+          <span class="hex-field-value"><code id="orch-two-proofs-b-hex">-</code></span>
+          <button class="copy-btn" data-copy-target="orch-two-proofs-b-hex" type="button">copy</button>
+        </div>
+        <div class="hex-field">
+          <span class="hex-field-name">A ⊕ B</span>
+          <span class="hex-field-value"><code id="orch-two-proofs-xor-hex">-</code></span>
+          <button class="copy-btn" data-copy-target="orch-two-proofs-xor-hex" type="button">copy</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>The full bundle</h2>
+    <p>
+      The proof is one component of an Orchard bundle. A v5 Zcash
+      transaction also carries a binding signature over the value
+      commitments and a spend-auth signature per Action. The
+      button below builds a full
+      <code>Bundle&lt;Authorized, i64&gt;</code> through the
+      production
+      <code>orchard::builder::Builder</code> pipeline and verifies
+      every signature independently.
+    </p>
+    <div class="run-strip">
+      <label>outputs <input id="orch-bundle-outputs" type="number" min="1" max="8" value="1" /></label>
+      <button id="orch-bundle-run" type="button" disabled>Build signed Orchard bundle</button>
+    </div>
+    <div id="orch-bundle-output" hidden>
+      <div class="verdict-tile" id="orch-bundle-verdict">
+        <div class="icon" aria-hidden="true"></div>
+        <div>
+          <div class="verdict-headline" id="orch-bundle-headline"></div>
+          <div class="verdict-sub" id="orch-bundle-sub"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hex-field"><span class="hex-field-name">flags (bits)</span><span class="hex-field-value"><code id="orch-bundle-flags">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">spends_enabled</span><span class="hex-field-value"><code id="orch-bundle-spends">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">outputs_enabled</span><span class="hex-field-value"><code id="orch-bundle-outputs-enabled">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">value_balance</span><span class="hex-field-value"><code id="orch-bundle-vbal">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">anchor</span><span class="hex-field-value"><code id="orch-bundle-anchor">-</code></span><button class="copy-btn" data-copy-target="orch-bundle-anchor" type="button">copy</button></div>
+        <div class="hex-field"><span class="hex-field-name">num_actions</span><span class="hex-field-value"><code id="orch-bundle-nactions">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">proof bytes</span><span class="hex-field-value"><code id="orch-bundle-proof-len">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">binding_signature</span><span class="hex-field-value"><code id="orch-bundle-binding-sig">-</code></span><button class="copy-btn" data-copy-target="orch-bundle-binding-sig" type="button">copy</button></div>
+        <div class="hex-field"><span class="hex-field-name">sighash (signed)</span><span class="hex-field-value"><code id="orch-bundle-sighash">-</code></span><button class="copy-btn" data-copy-target="orch-bundle-sighash" type="button">copy</button></div>
+      </div>
+      <h4>per-Action authorizing data</h4>
+      <div id="orch-bundle-actions"></div>
+    </div>
+
+    <h2>Verify arbitrary bytes</h2>
+    <p>
+      Paste a hex-encoded proof or the entire downloaded JSON. The
+      page parses out the bytes, reconstructs
+      <code>orchard::Proof::new</code>, and runs
+      <code>verify_proof</code> against the most recently cached
+      Instance.
+    </p>
+    <textarea id="orch-external-hex" rows="4"
+              placeholder="paste hex, or paste the entire downloaded JSON (the page will extract proof.bytes_hex)"
+              style="width: 100%; background: var(--bg-soft); color: var(--fg); border: 1px solid var(--rule); border-radius: 4px; padding: 0.7rem; font-family: var(--font-mono); font-size: 0.82rem; resize: vertical; min-height: 80px;"></textarea>
+    <div class="run-strip">
+      <button id="orch-external-verify-run" type="button" disabled>verify pasted hex</button>
+      <button id="orch-external-paste-last" type="button" class="secondary" disabled>paste last proof</button>
+    </div>
+    <div id="orch-external-result" class="verdict-tile" hidden>
+      <div class="icon" aria-hidden="true"></div>
+      <div>
+        <div class="verdict-headline" id="orch-external-headline"></div>
+        <div class="verdict-sub" id="orch-external-sub"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="orchard-batch-output" hidden>
+    <h2>Three independent runs</h2>
+    <p>
+      Three uniformly random witnesses, three independently
+      produced proofs, all verified by the same
+      <code>verify_proof</code>. The simulator does not depend on
+      one lucky seed.
+    </p>
+    <div class="card" id="orch-batch-grid" style="display: grid; gap: 0.6rem;"></div>
+  </div>
+
+  <div class="rule"></div>
+
+  <h2 id="mainnet-reject">What would happen on mainnet</h2>
+  <p>
+    Every cryptographic check on this page passes. A consensus
+    node would still reject the transaction for non-cryptographic
+    reasons:
+  </p>
+  <ol>
+    <li>
+      The <code>anchor</code> is uniformly random; mainnet nodes
+      check it against historical roots of the on-chain Orchard
+      note-commitment tree.
+    </li>
+    <li>
+      Even with a matching anchor, the spent note's commitment is
+      not in any real block. The Merkle path proves membership in
+      a tree the spent note was never in.
+    </li>
+    <li>
+      The total value balance across the Orchard bundle, the
+      Sapling bundle, and the transparent inputs/outputs must sum
+      to <code>(0 &minus; fee)</code>. This page builds the
+      Orchard piece in isolation.
+    </li>
+    <li>
+      The 32-byte sighash here is uniformly random. In production
+      it is derived from the entire v5 transaction body per ZIP
+      244. A node deriving the sighash from the actual submitted
+      body computes a different value, and every signature in the
+      bundle fails to verify against it.
+    </li>
+    <li>
+      Astronomically unlikely (≈ 2<sup>&minus;254</sup> per
+      Action) but real: a sampled nullifier could collide with an
+      on-chain one, in which case the transaction is rejected as a
+      double-spend.
+    </li>
+  </ol>
+
+  <p>
+    The simulator therefore demonstrates the
+    <code>Simulate</code> algorithm without breaking any soundness
+    property. It cannot be used to forge a spend the network would
+    accept.
+  </p>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <p>
+      <a href="/">Home</a> &middot;
+      <a href="/foundations.html">Foundations</a> &middot;
+      <a href="/halo2.html">Halo 2</a> &middot;
+      <a href="/reference.html">Reference</a>
+    </p>
+  </div>
+</footer>
+
+<script src="nav.js" type="module"></script>
+<script src="orchard.js" type="module"></script>
+</body>
+</html>
