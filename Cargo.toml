@@ -60,7 +60,7 @@ zeroize = { version = "1", features = ["zeroize_derive"] }
 # Phase 3: real orchard as a path dep, matching whatever versions it requires.
 # orchard's transitive `core2 0.3.x` is yanked on the registry but the cached
 # 0.3.3 is usable via `cargo update --precise 0.3.3 --offline`.
-orchard = { path = "/steam/rotko/orchard", default-features = false, features = ["circuit"], optional = true }
+orchard = { git = "https://github.com/rotkonetworks/orchard.git", branch = "rotko/v0.12.0", default-features = false, features = ["circuit"], optional = true }
 # Parallel-WASM only. `rayon` for the host-CPU thread pool API;
 # `wasm-bindgen-rayon` for the browser-side initialisation that wires
 # rayon up to a `SharedArrayBuffer`-backed Web Worker pool.
@@ -88,6 +88,8 @@ required-features = ["orchard"]
 warnings = "deny"
 
 [patch.crates-io]
-# `core2 0.3` was yanked from crates.io; orchard's Cargo.lock pins 0.3.3.
-# Point at the cached registry source so dependency resolution succeeds.
-core2 = { path = "/home/alice/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/core2-0.3.3" }
+# `core2 0.3.x` is yanked from crates.io but halo2_proofs 0.3.2's
+# `blake2b_simd` transitively pins 0.3.3. Vendored at `vendor/core2`
+# so the build doesn't depend on cargo's local registry cache.
+# Source: https://crates.io/crates/core2/0.3.3 (pre-yank), unmodified.
+core2 = { path = "vendor/core2" }

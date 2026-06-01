@@ -35,47 +35,23 @@ web/                              # static HTML/JS demo
   style.css nav.js halo2.js orchard.js orchard-worker.js orchard-worker-parallel.js serve.py
 ```
 
-## Two upstream dependencies need adjustment
+## Patched dependencies
 
-The `Cargo.toml` currently uses local `path =` references for two
-upstream crates. To build from a fresh clone you need to provide
-both:
+Two upstream crates need adjustment for this crate to build. Both
+are wired automatically; no manual setup is required.
 
-### 1. `orchard` with two `pub fn inner()` accessors
-
-The simulator's programmable-transcript path needs access to the
-internal `halo2_proofs::poly::commitment::Params`,
-`halo2_proofs::plonk::ProvingKey`, and `VerifyingKey` that the
-production `orchard::circuit::ProvingKey` and `VerifyingKey` wrap.
-Two upstream PRs would close this gap; until then, the local
-checkout needs three small additions:
-
-```rust
-// in orchard/src/circuit.rs, on `impl ProvingKey`:
-pub fn inner(&self) -> &plonk::ProvingKey<vesta::Affine> { &self.pk }
-pub fn params(&self) -> &Params<vesta::Affine> { &self.params }
-
-// on `impl VerifyingKey`:
-pub fn inner(&self) -> &plonk::VerifyingKey<vesta::Affine> { &self.vk }
-pub fn params(&self) -> &Params<vesta::Affine> { &self.params }
-
-// `Instance::to_halo2_instance` made `pub` (was `pub(crate)`).
-```
-
-Point `Cargo.toml`'s `orchard = { path = "..." }` at the patched
-checkout.
-
-### 2. `core2 0.3.3` is yanked on crates.io
-
-The upstream `orchard` Cargo.lock pins `core2 0.3.x`, which has been
-yanked. The `[patch.crates-io]` table in `Cargo.toml` points at a
-cached registry source on the original author's machine. To build
-elsewhere, either:
-
-- vendor `core2 0.3.3` (download from a cached registry or any user's
-  `~/.cargo/registry/src/.../core2-0.3.3`) and point the patch at the
-  local path, or
-- bump `core2` to a non-yanked version if compatible.
+- **`orchard`** is pulled from
+  [`rotkonetworks/orchard`](https://github.com/rotkonetworks/orchard),
+  branch `rotko/v0.12.0`. That branch is the unmodified upstream
+  `zcash/orchard` tag `0.12.0` with two small additions on top:
+  `ProvingKey::inner()` / `VerifyingKey::inner()` accessors for the
+  programmable-transcript path, and `SigningMetadata::alpha()` /
+  `is_dummy()` accessors for airgap signing. Both are read-only
+  accessors; no behaviour changes for callers that don't use them.
+- **`core2 0.3.3`** is yanked from crates.io but
+  `halo2_proofs 0.3.2`'s `blake2b_simd` transitively pins it.
+  The crate is vendored unmodified under `vendor/core2` and pulled
+  via `[patch.crates-io]` in `Cargo.toml`.
 
 ## Build
 
