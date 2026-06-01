@@ -98,9 +98,7 @@ fn main() -> ExitCode {
 
     eprintln!("orchard-cli: Proof::verify…");
     let t0 = Instant::now();
-    let verified = proof
-        .verify(&vk, std::slice::from_ref(&instance))
-        .is_ok();
+    let verified = proof.verify(&vk, std::slice::from_ref(&instance)).is_ok();
     let verify_ms = t0.elapsed().as_millis();
 
     let proof_bytes = proof.as_ref();

@@ -57,9 +57,11 @@ serde_json = { version = "1", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 halo2_proofs = { version = "0.3", default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"], optional = true }
 zeroize = { version = "1", features = ["zeroize_derive"] }
-# Phase 3: real orchard as a path dep, matching whatever versions it requires.
-# orchard's transitive `core2 0.3.x` is yanked on the registry but the cached
-# 0.3.3 is usable via `cargo update --precise 0.3.3 --offline`.
+# Patched fork of orchard 0.12.0 with `ProvingKey::inner()` /
+# `VerifyingKey::inner()` accessors so the programmable-transcript
+# path (`crate::halo2_shim`) can be plumbed in, and SigningMetadata
+# accessors for airgap signing. The `circuit` feature is the
+# production Orchard Action circuit.
 orchard = { git = "https://github.com/rotkonetworks/orchard.git", branch = "rotko/v0.12.0", default-features = false, features = ["circuit"], optional = true }
 # Parallel-WASM only. `rayon` for the host-CPU thread pool API;
 # `wasm-bindgen-rayon` for the browser-side initialisation that wires

@@ -57,7 +57,7 @@ are wired automatically; no manual setup is required.
 
 ```bash
 # host-side tests (12 fast + 9 slow `#[ignore]`-gated)
-cargo test --features simulator,halo2,orchard
+cargo test --features orchard
 cargo test --features orchard -- --ignored   # ~2.5 min for the slow set
 
 # single-threaded WASM (3.95 MB)

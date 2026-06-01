@@ -41,76 +41,89 @@ const MERKLE_DEPTH_ORCHARD: usize = 32;
 // Witness sampling using only public orchard APIs
 // ---------------------------------------------------------------------------
 
+/// Maximum rejection-sampling attempts before returning an error. The
+/// Pasta scalar/base fields have acceptance rate ~1/2 per 32-byte
+/// candidate; 64 attempts gives a failure rate ~2<sup>-64</sup>,
+/// well below any practical concern, and ensures a hostile or broken
+/// RNG cannot hang the prover indefinitely.
+const MAX_SAMPLE_ATTEMPTS: usize = 64;
+
 /// Sample a uniformly-random Orchard spending key by retrying byte
 /// candidates until the field-membership and viewing-key derivation
-/// checks pass. Expected number of iterations is < 2.
-fn random_spending_key(rng: &mut impl RngCore) -> SpendingKey {
-    loop {
+/// checks pass. Returns `Err` after [`MAX_SAMPLE_ATTEMPTS`].
+fn random_spending_key(rng: &mut impl RngCore) -> Result<SpendingKey, &'static str> {
+    for _ in 0..MAX_SAMPLE_ATTEMPTS {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);
         let candidate = SpendingKey::from_bytes(bytes);
         if bool::from(candidate.is_some()) {
-            return candidate.unwrap();
+            return Ok(candidate.unwrap());
         }
     }
+    Err("rng failed to produce a valid SpendingKey within retry budget")
 }
 
 /// Sample a random `Rho` by retrying field-membership of 32 random bytes.
-fn random_rho(rng: &mut impl RngCore) -> Rho {
-    loop {
+fn random_rho(rng: &mut impl RngCore) -> Result<Rho, &'static str> {
+    for _ in 0..MAX_SAMPLE_ATTEMPTS {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);
         let candidate = Rho::from_bytes(&bytes);
         if bool::from(candidate.is_some()) {
-            return candidate.unwrap();
+            return Ok(candidate.unwrap());
         }
     }
+    Err("rng failed to produce a valid Rho within retry budget")
 }
 
 /// Sample a `RandomSeed` for a note with the given `rho`.
-fn random_rseed(rho: &Rho, rng: &mut impl RngCore) -> RandomSeed {
-    loop {
+fn random_rseed(rho: &Rho, rng: &mut impl RngCore) -> Result<RandomSeed, &'static str> {
+    for _ in 0..MAX_SAMPLE_ATTEMPTS {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);
         let candidate = RandomSeed::from_bytes(bytes, rho);
         if bool::from(candidate.is_some()) {
-            return candidate.unwrap();
+            return Ok(candidate.unwrap());
         }
     }
+    Err("rng failed to produce a valid RandomSeed within retry budget")
 }
 
 /// Sample a `ValueCommitTrapdoor` by retrying field-membership.
-fn random_rcv(rng: &mut impl RngCore) -> ValueCommitTrapdoor {
-    loop {
+fn random_rcv(rng: &mut impl RngCore) -> Result<ValueCommitTrapdoor, &'static str> {
+    for _ in 0..MAX_SAMPLE_ATTEMPTS {
         let mut bytes = [0u8; 32];
         rng.fill_bytes(&mut bytes);
         let candidate = ValueCommitTrapdoor::from_bytes(bytes);
         if bool::from(candidate.is_some()) {
-            return candidate.unwrap();
+            return Ok(candidate.unwrap());
         }
     }
+    Err("rng failed to produce a valid ValueCommitTrapdoor within retry budget")
 }
 
 /// Sample a random Merkle path of depth `MERKLE_DEPTH_ORCHARD` at
 /// position 0. Uses `MerkleHashOrchard::from_bytes` with retry, so it
 /// works in WASM builds (no `test-dependencies` requirement).
-fn random_merkle_path(rng: &mut impl RngCore) -> MerklePath {
+fn random_merkle_path(rng: &mut impl RngCore) -> Result<MerklePath, &'static str> {
     let mut auth_path = Vec::with_capacity(MERKLE_DEPTH_ORCHARD);
     for _ in 0..MERKLE_DEPTH_ORCHARD {
-        let mut bytes = [0u8; 32];
-        let h = loop {
+        let mut sampled = None;
+        for _ in 0..MAX_SAMPLE_ATTEMPTS {
+            let mut bytes = [0u8; 32];
             rng.fill_bytes(&mut bytes);
             let cand = MerkleHashOrchard::from_bytes(&bytes);
             if bool::from(cand.is_some()) {
-                break cand.unwrap();
+                sampled = Some(cand.unwrap());
+                break;
             }
-        };
-        auth_path.push(h);
+        }
+        auth_path.push(sampled.ok_or("rng failed to produce a valid MerkleHashOrchard")?);
     }
     let auth_path: [MerkleHashOrchard; MERKLE_DEPTH_ORCHARD] = auth_path
         .try_into()
-        .expect("vec length matches Merkle depth");
-    MerklePath::from_parts(0, auth_path)
+        .map_err(|_| "Merkle auth path length mismatch")?;
+    Ok(MerklePath::from_parts(0, auth_path))
 }
 
 /// Construct a valid `Note` for the given recipient, value, and `rho`.
@@ -119,14 +132,15 @@ fn make_note(
     value: NoteValue,
     rho: Rho,
     rng: &mut impl RngCore,
-) -> Note {
-    loop {
-        let rseed = random_rseed(&rho, rng);
+) -> Result<Note, &'static str> {
+    for _ in 0..MAX_SAMPLE_ATTEMPTS {
+        let rseed = random_rseed(&rho, rng)?;
         let note = Note::from_parts(recipient, value, rho, rseed);
         if bool::from(note.is_some()) {
-            return note.unwrap();
+            return Ok(note.unwrap());
         }
     }
+    Err("rng failed to produce a valid Note within retry budget")
 }
 
 // ---------------------------------------------------------------------------
@@ -147,14 +161,14 @@ pub fn build_action_with_values(
     rng: &mut impl RngCore,
 ) -> Result<(Circuit, Instance), &'static str> {
     // Sender: random spending key → full viewing key → external address.
-    let sender_sk = random_spending_key(rng);
+    let sender_sk = random_spending_key(rng)?;
     let sender_fvk: FullViewingKey = (&sender_sk).into();
     let sender_addr = sender_fvk.address_at(0u32, Scope::External);
 
     // Spent note: caller-chosen value, random rho (independent of any
     // prior nullifier since this is a dummy).
-    let spent_rho = random_rho(rng);
-    let spent_note = make_note(sender_addr, spend_value, spent_rho, rng);
+    let spent_rho = random_rho(rng)?;
+    let spent_note = make_note(sender_addr, spend_value, spent_rho, rng)?;
 
     // Compute the spent note's nullifier, then derive the output's rho
     // from it via the public byte-conversion path.
@@ -164,19 +178,19 @@ pub fn build_action_with_values(
         .ok_or("nullifier bytes are not a valid Rho representation")?;
 
     // Recipient: another random spending key → another external address.
-    let recipient_sk = random_spending_key(rng);
+    let recipient_sk = random_spending_key(rng)?;
     let recipient_fvk: FullViewingKey = (&recipient_sk).into();
     let recipient_addr = recipient_fvk.address_at(0u32, Scope::External);
 
-    let output_note = make_note(recipient_addr, output_value, output_rho, rng);
+    let output_note = make_note(recipient_addr, output_value, output_rho, rng)?;
 
     // Spend-side Merkle path (random, position 0). The anchor is computed
     // as `path.root(commitment of spent_note)`.
-    let merkle_path = random_merkle_path(rng);
+    let merkle_path = random_merkle_path(rng)?;
 
     // Randomisation scalar and value-commitment trapdoor.
     let alpha = pallas::Scalar::random(&mut *rng);
-    let rcv = random_rcv(rng);
+    let rcv = random_rcv(rng)?;
 
     // Build SpendInfo from public constructor. fvk must own the note.
     let spend =
@@ -268,14 +282,14 @@ pub fn build_signed_orchard_bundle_with_outputs(
         return Err("num_outputs must be ≥ 1".to_string());
     }
 
-    let sender_sk = random_spending_key(rng);
+    let sender_sk = random_spending_key(rng).map_err(str::to_string)?;
     let sender_fvk: FullViewingKey = (&sender_sk).into();
     let sender_addr = sender_fvk.address_at(0u32, Scope::External);
 
-    let spent_rho = random_rho(rng);
+    let spent_rho = random_rho(rng).map_err(str::to_string)?;
     let value = NoteValue::from_raw(0);
-    let spent_note = make_note(sender_addr, value, spent_rho, rng);
-    let merkle_path = random_merkle_path(rng);
+    let spent_note = make_note(sender_addr, value, spent_rho, rng).map_err(str::to_string)?;
+    let merkle_path = random_merkle_path(rng).map_err(str::to_string)?;
     let anchor = merkle_path.root(spent_note.commitment().into());
 
     let mut builder = Builder::new(BundleType::DEFAULT, anchor);
@@ -283,7 +297,7 @@ pub fn build_signed_orchard_bundle_with_outputs(
         .add_spend(sender_fvk.clone(), spent_note, merkle_path)
         .map_err(|e| format!("add_spend: {e:?}"))?;
     for _ in 0..num_outputs {
-        let recipient_sk = random_spending_key(rng);
+        let recipient_sk = random_spending_key(rng).map_err(str::to_string)?;
         let recipient_fvk: FullViewingKey = (&recipient_sk).into();
         let recipient_addr = recipient_fvk.address_at(0u32, Scope::External);
         builder

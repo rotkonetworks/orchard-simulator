@@ -142,7 +142,9 @@ pub fn halo2_demo(c_seed: u32, witness_seed: u32) -> Result<JsValue, JsError> {
     let challenge_count = transcript_challenge_count();
     let mut rng_chal =
         rand_chacha::ChaCha20Rng::seed_from_u64(u64::from(witness_seed) ^ 0xdead_beef_cafe_babe);
-    let challenges: Vec<F> = (0..challenge_count).map(|_| F::random(&mut rng_chal)).collect();
+    let challenges: Vec<F> = (0..challenge_count)
+        .map(|_| F::random(&mut rng_chal))
+        .collect();
     let zk_simulator = run_zk_simulator(
         &keys.params,
         &keys.pk,
@@ -173,19 +175,22 @@ fn run_honest(
     witness_seed: u32,
 ) -> Result<Halo2OneRun, JsError> {
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(u64::from(witness_seed));
-    let a = loop {
-        let candidate = F::random(&mut rng);
-        if !bool::from(candidate.is_zero()) {
-            break candidate;
-        }
-    };
-    let a_inv: F = Option::from(a.invert()).expect("nonzero by construction");
+    let a = sample_nonzero(&mut rng)?;
+    let a_inv: F =
+        Option::from(a.invert()).ok_or_else(|| JsError::new("a is zero (impossible)"))?;
     let b = c * a_inv;
 
     let circuit = MulCircuit::<F>::new(a, b);
     let mut transcript = Blake2bWrite::<_, C, Challenge255<C>>::init(Vec::new());
-    create_proof(params, pk, &[circuit], &[&[&[c]]], &mut rng, &mut transcript)
-        .map_err(|e| JsError::new(&format!("honest create_proof: {e:?}")))?;
+    create_proof(
+        params,
+        pk,
+        &[circuit],
+        &[&[&[c]]],
+        &mut rng,
+        &mut transcript,
+    )
+    .map_err(|e| JsError::new(&format!("honest create_proof: {e:?}")))?;
     let proof = transcript.finalize();
 
     // Verify under Blake2b.
@@ -231,19 +236,16 @@ fn run_zk_simulator(
     seed: u32,
 ) -> Result<Halo2OneRun, JsError> {
     // Sample a witness for the underlying multi-witness relation
-    // c = a*b. The ZK property here rests on (a) the uniformity of
-    // this sample over the witness set and (b) the programmability
-    // of the transcript. The byte-level no-witness construction
-    // would replace step (a) but is not used here; see
-    // halo2_simulator::zero_knowledge_proof_outline.
+    // c = a*b. The ROM-ZK claim here rests on the uniformity of this
+    // sample over the witness set composed with the programmability
+    // of the transcript; see the halo2_simulator module docs for the
+    // full argument. The byte-level no-witness construction that
+    // would close the gap on unique-witness relations is research-
+    // status and not implemented in this crate.
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(u64::from(seed));
-    let a = loop {
-        let candidate = F::random(&mut rng);
-        if !bool::from(candidate.is_zero()) {
-            break candidate;
-        }
-    };
-    let a_inv: F = Option::from(a.invert()).expect("nonzero by construction");
+    let a = sample_nonzero(&mut rng)?;
+    let a_inv: F =
+        Option::from(a.invert()).ok_or_else(|| JsError::new("a is zero (impossible)"))?;
     let b = c * a_inv;
 
     let circuit = MulCircuit::<F>::new(a, b);
@@ -295,6 +297,22 @@ fn transcript_challenge_count() -> usize {
 
 fn now_ms() -> f64 {
     js_sys::Date::now()
+}
+
+/// Maximum rejection-sampling attempts before returning an error. The
+/// probability of `F::random` producing zero is ~2<sup>-254</sup> for
+/// the Pasta scalar field; 32 attempts is a safety bound against a
+/// hostile or broken RNG, never reached in practice.
+const MAX_NONZERO_SAMPLE_ATTEMPTS: usize = 32;
+
+fn sample_nonzero(rng: &mut impl rand::RngCore) -> Result<F, JsError> {
+    for _ in 0..MAX_NONZERO_SAMPLE_ATTEMPTS {
+        let candidate = F::random(&mut *rng);
+        if !bool::from(candidate.is_zero()) {
+            return Ok(candidate);
+        }
+    }
+    Err(JsError::new("rng failed to produce a nonzero scalar"))
 }
 
 fn scalar_hex(s: &F) -> String {

@@ -14,7 +14,7 @@ use halo2_proofs::plonk::{create_proof, keygen_pk, keygen_vk, Circuit};
 use halo2_proofs::poly::commitment::Params;
 use halo2_proofs::transcript::{Blake2bWrite, Challenge255};
 use orchard_simulator::halo2_circuit::MulCircuit;
-use orchard_simulator::halo2_simulator::zero_knowledge_proof;
+use orchard_simulator::halo2_simulator::programmable_proof;
 use rand::SeedableRng;
 
 type C = EqAffine;
@@ -68,7 +68,7 @@ fn simulator_proof(
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
     let mut chal_rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed.wrapping_add(0xC0FE));
     let challenges: Vec<F> = (0..64).map(|_| F::random(&mut chal_rng)).collect();
-    zero_knowledge_proof(params, pk, c, challenges, &mut rng).expect("simulator")
+    programmable_proof(params, pk, c, challenges, &mut rng).expect("simulator")
 }
 
 /// Bin a byte into 4-bit high nibble.

@@ -422,10 +422,13 @@
       a tree the spent note was never in.
     </li>
     <li>
-      The total value balance across the Orchard bundle, the
-      Sapling bundle, and the transparent inputs/outputs must sum
-      to <code>(0 &minus; fee)</code>. This page builds the
-      Orchard piece in isolation.
+      If the bundle were submitted alongside transparent or
+      Sapling components, the cross-bundle value balance check
+      would fail unless those components were constructed to net
+      to <code>(spend_orchard &minus; output_orchard &minus; fee)</code>.
+      An Orchard-only transaction (as this simulator builds) doesn't
+      hit this constraint internally, but a real wallet rarely sends
+      one.
     </li>
     <li>
       The 32-byte sighash here is uniformly random. In production
@@ -433,12 +436,6 @@
       244. A node deriving the sighash from the actual submitted
       body computes a different value, and every signature in the
       bundle fails to verify against it.
-    </li>
-    <li>
-      Astronomically unlikely (≈ 2<sup>&minus;254</sup> per
-      Action) but real: a sampled nullifier could collide with an
-      on-chain one, in which case the transaction is rejected as a
-      double-spend.
     </li>
   </ol>
 

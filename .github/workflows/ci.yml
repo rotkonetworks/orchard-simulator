@@ -10,85 +10,10 @@ env:
   RUST_BACKTRACE: short
   # Warning denial is configured in `[lints.rust]` of Cargo.toml so it
   # applies only to this crate. Setting `RUSTFLAGS=-D warnings` here
-  # would also fail on upstream-crate deprecations (e.g. the patched
+  # would also fail on upstream-crate deprecations (e.g. the vendored
   # `core2 0.3.3`) which we cannot fix.
 
 jobs:
-  test:
-    name: Test (${{ matrix.features }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - features: --no-default-features
-            label: "no simulator (production build)"
-          - features: ""
-            label: "with simulator (dev/test)"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Cache cargo registry + target
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
-      - name: Build
-        run: cargo build ${{ matrix.features }} --verbose
-      - name: Test
-        if: matrix.features != '--no-default-features'
-        # The simulator-disabled build has no tests of its own; it's
-        # exercised by `cargo build`. Tests reference the Simulate trait
-        # so they require the simulator feature.
-        run: cargo test ${{ matrix.features }} --verbose
-
-  halo2-integration:
-    name: halo2 integration (against real halo2_proofs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-halo2-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
-      - name: Test halo2-feature suite
-        run: cargo test --features halo2 --verbose
-
-  orchard-integration:
-    name: Orchard Action integration
-    runs-on: ubuntu-latest
-    # The Orchard ProvingKey + proof+verify cycle is ~90 seconds per
-    # invocation; ignored-gated tests are the slow ones.
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-orchard-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
-      - name: Default Orchard tests
-        run: cargo test --features orchard --verbose
-      - name: Slow Orchard tests (verify, differs, arbitrary-value, tampered, mismatch)
-        # The ignored-gated tests verify simulator output against the
-        # real Orchard verifier. Critical end-to-end checks; budget
-        # ~10 min of CI time per run.
-        run: cargo test --features orchard -- --ignored --include-ignored --skip programmable --skip statistical
-      - name: ROM-programmable real-Orchard test
-        # ~3 min; do separately so failures here are easy to spot.
-        run: cargo test --features orchard --lib orchard_action::tests::orchard_action_simulator_programmable_verifies -- --ignored
-
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -107,5 +32,64 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --all-targets -- -D warnings
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - run: cargo clippy --features orchard --all-targets -- -D warnings
       - run: cargo clippy --no-default-features --all-targets -- -D warnings
+
+  test-halo2:
+    name: Test (halo2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-halo2-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - run: cargo test --features halo2 --verbose
+
+  test-orchard:
+    name: Test (orchard)
+    runs-on: ubuntu-latest
+    # The slow #[ignore]-gated tests run the production Orchard prover
+    # end to end. ~2.5 min locally; CI can budget ~10 min.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-orchard-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - name: Fast lib tests
+        run: cargo test --features orchard --lib --verbose
+      - name: Slow Orchard tests
+        run: cargo test --features orchard --lib -- --ignored
+
+  build-wasm:
+    name: Build (wasm32, wasm-orchard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+      - run: cargo build --target wasm32-unknown-unknown --features wasm-orchard --no-default-features --release --lib
