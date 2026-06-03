@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for new orchard.rotko.net builds every 2 minutes
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=2min
+Unit=orchard-deploy.service
+
+[Install]
+WantedBy=timers.target

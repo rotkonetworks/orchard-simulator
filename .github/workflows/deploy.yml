@@ -1,0 +1,95 @@
+name: Build deploy artifact
+
+# Every push to main produces a tarball of the static site (HTML, CSS,
+# JS, both WASM blobs) and publishes it as a release asset. The Rotko
+# edge servers (bkk06/07/08) pull the latest artifact and unpack it
+# into the haproxy-served root for orchard.rotko.net.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write  # required to create releases
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build WASM and pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Rust nightly + rust-src
+        # Pin nightly so wasm-bindgen-cli + rustc stay in sync;
+        # bumping this requires a matching wasm-bindgen-cli that
+        # accepts the `__heap_base` symbol shape produced by nightly.
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-05-01
+          targets: wasm32-unknown-unknown
+          components: rust-src
+
+      - name: Cache cargo + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-deploy-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli --version 0.2.114 --locked
+
+      - name: Build single-threaded WASM
+        env:
+          PROFILE: release
+          FEATURES: wasm-orchard
+        run: bash build-wasm.sh
+
+      - name: Build parallel WASM
+        run: bash build-wasm-parallel.sh
+
+      - name: Pack artifact
+        run: |
+          mkdir -p dist
+          cp -r web/* dist/
+          # Remove the dev server script and any backup files.
+          rm -f dist/serve.py
+          # Sanity check.
+          ls -la dist/
+          ls -la dist/pkg dist/pkg-parallel
+          tar -czf orchard-simulator-site.tar.gz -C dist .
+          sha256sum orchard-simulator-site.tar.gz > orchard-simulator-site.tar.gz.sha256
+          cat orchard-simulator-site.tar.gz.sha256
+
+      - name: Publish as a release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="site-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA:0:7}"
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "Static site build $TAG" \
+            --notes "Built from ${GITHUB_SHA}. Pull on edge: deploy/install.sh" \
+            orchard-simulator-site.tar.gz \
+            orchard-simulator-site.tar.gz.sha256
+          # Also re-tag a moving 'latest-site' release so the edge
+          # install script always knows where to look.
+          gh release delete latest-site --yes 2>/dev/null || true
+          gh release create latest-site \
+            --target "$GITHUB_SHA" \
+            --title "Latest static site (auto-updated)" \
+            --notes "Latest build of main, kept current for edge pulls." \
+            orchard-simulator-site.tar.gz \
+            orchard-simulator-site.tar.gz.sha256

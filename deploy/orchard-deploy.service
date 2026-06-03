@@ -1,0 +1,17 @@
+[Unit]
+Description=Pull latest orchard.rotko.net static site from GitHub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/orchard-deploy-install
+# Tolerate transient GH outages: failures are not fatal at the unit
+# level; the timer will retry on next firing.
+SuccessExitStatus=0
+User=root
+ProtectSystem=full
+ReadWritePaths=/var/www/orchard-rotko-net /tmp/orchard-deploy
+
+[Install]
+WantedBy=multi-user.target
