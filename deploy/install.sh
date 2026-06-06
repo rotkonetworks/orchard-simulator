@@ -30,9 +30,13 @@ if [[ -f "$DEST/.deploy-sha256" ]]; then
   current=$(cat "$DEST/.deploy-sha256")
 fi
 
-# Fetch latest checksum.
+# Fetch latest checksum. Exit cleanly if the release doesn't exist yet
+# (eg first deploy hasn't built); the timer retries on next firing.
 cd "$TMP"
-curl -sSL -o "$HASH_ASSET" "https://github.com/$REPO/releases/download/$TAG/$HASH_ASSET"
+if ! curl -sSLf -o "$HASH_ASSET" "https://github.com/$REPO/releases/download/$TAG/$HASH_ASSET"; then
+  echo "orchard.rotko.net: $TAG release not available yet, will retry."
+  exit 0
+fi
 latest=$(awk '{print $1}' "$HASH_ASSET")
 
 if [[ "$current" == "$latest" ]]; then
