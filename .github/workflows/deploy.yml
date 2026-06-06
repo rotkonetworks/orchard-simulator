@@ -30,14 +30,12 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install Rust nightly + rust-src
-        # Pin nightly so wasm-bindgen-cli + rustc stay in sync;
-        # bumping this requires a matching wasm-bindgen-cli that
-        # accepts the `__heap_base` symbol shape produced by nightly.
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly-2026-05-01
-          targets: wasm32-unknown-unknown
-          components: rust-src
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          rustup component add rust-src --toolchain nightly
+          rustup target add wasm32-unknown-unknown --toolchain nightly
+          rustup run nightly rustc --version
+          ls "$(rustc +nightly --print sysroot)/lib/rustlib/src/rust/library/Cargo.lock"
 
       - name: Cache cargo + target
         uses: actions/cache@v4
@@ -58,11 +56,6 @@ jobs:
         run: bash build-wasm.sh
 
       - name: Build parallel WASM
-        env:
-          # Match the pinned nightly installed above (the one that has
-          # rust-src). The script defaults to bare `nightly` for local
-          # devs.
-          NIGHTLY_TOOLCHAIN: nightly-2026-05-01
         run: bash build-wasm-parallel.sh
 
       - name: Pack artifact
