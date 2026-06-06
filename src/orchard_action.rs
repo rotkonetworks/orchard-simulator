@@ -208,7 +208,12 @@ pub fn build_action_with_values(
     let ak: SpendValidatingKey = sender_fvk.into();
     let rk = ak.randomize(&alpha);
 
-    let instance = Instance::from_parts(anchor, cv_net, nf_old, rk, cmx, true, true);
+    // Upstream 0.14.0+: from_parts returns None for identity rk. Since rk
+    // is the randomization of a uniformly-sampled ak by a uniformly-sampled
+    // alpha, the only way to hit identity is alpha == -ak (probability
+    // ~2^-254), so a panic here is the right failure mode.
+    let instance = Instance::from_parts(anchor, cv_net, nf_old, rk, cmx, true, true)
+        .ok_or("Instance::from_parts: rk is the identity point")?;
 
     Ok((circuit, instance))
 }

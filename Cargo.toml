@@ -57,12 +57,14 @@ serde_json = { version = "1", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 halo2_proofs = { version = "0.3", default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"], optional = true }
 zeroize = { version = "1", features = ["zeroize_derive"] }
-# Patched fork of orchard 0.12.0 with `ProvingKey::inner()` /
-# `VerifyingKey::inner()` accessors so the programmable-transcript
-# path (`crate::halo2_shim`) can be plumbed in, and SigningMetadata
-# accessors for airgap signing. The `circuit` feature is the
-# production Orchard Action circuit.
-orchard = { git = "https://github.com/rotkonetworks/orchard.git", branch = "rotko/v0.12.0", default-features = false, features = ["circuit"], optional = true }
+# Patched fork of orchard 0.14.0 (NU6.2 fix for the May 2026 inflation
+# vulnerability) with the same six rotko accessors: ProvingKey::inner(),
+# VerifyingKey::inner(), and matching params() so the programmable-
+# transcript path (`crate::halo2_shim`) can be plumbed in;
+# Instance::to_halo2_instance() promoted to pub for external verifiers;
+# and SigningMetadata::alpha()/is_dummy() for airgap signing.
+# The `circuit` feature is the production Orchard Action circuit.
+orchard = { git = "https://github.com/rotkonetworks/orchard.git", branch = "rotko/v0.14.0", default-features = false, features = ["circuit"], optional = true }
 # Parallel-WASM only. `rayon` for the host-CPU thread pool API;
 # `wasm-bindgen-rayon` for the browser-side initialisation that wires
 # rayon up to a `SharedArrayBuffer`-backed Web Worker pool.
