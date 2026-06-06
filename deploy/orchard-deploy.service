@@ -5,14 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Pre-create the workdir so ProtectSystem/ReadWritePaths can bind-mount
-# it on the first run; otherwise systemd fails at NAMESPACE setup.
-ExecStartPre=/bin/mkdir -p /tmp/orchard-deploy
 ExecStart=/usr/local/bin/orchard-deploy-install
 SuccessExitStatus=0
 User=root
-ProtectSystem=full
-ReadWritePaths=/var/www/orchard-rotko-net /tmp/orchard-deploy
+# No sandbox: ProtectSystem + ReadWritePaths bind-mounts the docroot,
+# which makes it "busy" so install.sh's atomic mv-swap of the dir
+# can't succeed. Script is root-only on the edge boxes anyway.
 
 [Install]
 WantedBy=multi-user.target
