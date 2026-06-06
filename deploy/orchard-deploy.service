@@ -5,9 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+# Pre-create the workdir so ProtectSystem/ReadWritePaths can bind-mount
+# it on the first run; otherwise systemd fails at NAMESPACE setup.
+ExecStartPre=/bin/mkdir -p /tmp/orchard-deploy
 ExecStart=/usr/local/bin/orchard-deploy-install
-# Tolerate transient GH outages: failures are not fatal at the unit
-# level; the timer will retry on next firing.
 SuccessExitStatus=0
 User=root
 ProtectSystem=full
