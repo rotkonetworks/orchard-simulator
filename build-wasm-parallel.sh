@@ -18,6 +18,13 @@ set -euo pipefail
 
 CRATE_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Toolchain selection: local devs use whatever bare `nightly` rustup gives
+# them (which usually has rust-src). CI pins a specific nightly date so
+# wasm-bindgen-cli + rustc stay in sync, and installs rust-src only on
+# that pinned date — so CI must export NIGHTLY_TOOLCHAIN to point this
+# script at the pinned one. See .github/workflows/deploy.yml.
+NIGHTLY_TOOLCHAIN="${NIGHTLY_TOOLCHAIN:-nightly}"
+
 echo "Building parallel-WASM Orchard simulator"
 echo "========================================"
 echo "  - Toolchain: nightly Rust (atomics + build-std)"
@@ -34,7 +41,7 @@ echo
 # tries to postMessage the memory to child workers.
 # 4 GiB is the SharedArrayBuffer ceiling.
 RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=4294967296 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base' \
-cargo +nightly build \
+cargo "+${NIGHTLY_TOOLCHAIN}" build \
   --target wasm32-unknown-unknown \
   --features wasm-orchard-parallel \
   --no-default-features \

@@ -58,6 +58,11 @@ jobs:
         run: bash build-wasm.sh
 
       - name: Build parallel WASM
+        env:
+          # Match the pinned nightly installed above (the one that has
+          # rust-src). The script defaults to bare `nightly` for local
+          # devs.
+          NIGHTLY_TOOLCHAIN: nightly-2026-05-01
         run: bash build-wasm-parallel.sh
 
       - name: Pack artifact
