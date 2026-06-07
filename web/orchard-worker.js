@@ -27,7 +27,13 @@ let wasmReady = false;
 
 async function ensureInit() {
   if (!wasmReady) {
-    await init();
+    // Cache-buster on the WASM URL: the wasm-bindgen output filename is
+    // constant across deploys (`orchard_simulator_bg.wasm`), so any
+    // browser that cached a prior build under the old "immutable"
+    // header would keep using it forever. The query string forces a
+    // fresh URL; the nginx vhost now serves the file with no-cache /
+    // ETag-revalidation headers so this is cheap (304 on no change).
+    await init(new URL('./pkg/orchard_simulator_bg.wasm?v=' + Date.now(), import.meta.url));
     wasmReady = true;
   }
 }

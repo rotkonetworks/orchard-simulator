@@ -31,7 +31,8 @@ let threadCount = 0;
 
 async function ensureInit() {
   if (!wasmReady) {
-    await init();
+    // Cache-buster on the WASM URL; see orchard-worker.js for rationale.
+    await init(new URL('./pkg-parallel/orchard_simulator_bg.wasm?v=' + Date.now(), import.meta.url));
     const n = (self.navigator && self.navigator.hardwareConcurrency) || 4;
     threadCount = Math.max(2, n);
     await initThreadPool(threadCount);
