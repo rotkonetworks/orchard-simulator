@@ -14,7 +14,10 @@ let wasmReady = false;
 
 async function ensureInit() {
   if (!wasmReady) {
-    await init();
+    // Cache-buster: see orchard-worker.js. Avoids the case where a
+    // browser cached a prior `orchard_simulator_bg.wasm` under the old
+    // immutable header and uses it forever.
+    await init(new URL('./pkg/orchard_simulator_bg.wasm?v=' + Date.now(), import.meta.url));
     wasmReady = true;
   }
 }
