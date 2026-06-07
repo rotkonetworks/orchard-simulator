@@ -156,9 +156,13 @@
 
   <p>
     Terms used throughout the <a href="/orchard.html">Orchard
-    page</a>. The Zcash protocol specification defines them
+    page</a>. The
+    <a href="https://zips.z.cash/protocol/protocol.pdf"
+       rel="noopener">Zcash protocol specification</a> defines them
     across &sect;3 (Concepts) and &sect;4 (Abstract Protocol); the
-    Action ZK relation that ties them together is section 4.18.4.
+    Action ZK relation that ties them together is
+    <a href="https://zips.z.cash/protocol/protocol.pdf"
+       rel="noopener">section 4.18.4</a>.
   </p>
 
   <dl class="glossary">
@@ -355,11 +359,19 @@
     <li>
       <strong>Zcash protocol specification.</strong>
       <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">zips.z.cash/protocol/protocol.pdf</a>.
-      Section 3.7 introduces Action transfers; section 4.6 defines
-      the Action description data structure; section 4.18.4 is the
-      Action ZK relation the simulator proves. Sections 4.14 and
-      4.15 specify the binding and spend-authorization signatures
-      abstractly; section 5.4.7 instantiates them as RedPallas.
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">Section 3.7</a>
+      introduces Action transfers;
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">section 4.6</a>
+      defines the Action description data structure;
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">section 4.18.4</a>
+      is the Action ZK relation the simulator proves.
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">Sections 4.14</a>
+      and
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">4.15</a>
+      specify the binding and spend-authorization signatures
+      abstractly;
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">section 5.4.7</a>
+      instantiates them as RedPallas.
     </li>
     <li>
       <strong>ZIP 244: Transaction Identifier
@@ -458,7 +470,8 @@ xdg-open http://localhost:8000</code></pre>
       <a href="/">Home</a> &middot;
       <a href="/foundations.html">Foundations</a> &middot;
       <a href="/halo2.html">Halo 2</a> &middot;
-      <a href="/orchard.html">Orchard</a>
+      <a href="/orchard.html">Orchard</a> &middot;
+      <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">Zcash spec &#x2197;</a>
     </p>
     <dl>
       <dt>License</dt>
@@ -470,6 +483,12 @@ xdg-open http://localhost:8000</code></pre>
         Every byte the page produces is determined by the URL hash
         seed plus the upstream crate versions pinned in
         <code>Cargo.lock</code>.
+      </dd>
+      <dt>Spec</dt>
+      <dd>
+        <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">zips.z.cash/protocol/protocol.pdf</a>
+        &mdash; the Zcash protocol specification this simulator
+        proves against.
       </dd>
     </dl>
   </div>
