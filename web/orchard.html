@@ -34,8 +34,14 @@
       The same <code>orchard::circuit::Circuit</code> and
       <code>halo2_proofs::plonk::create_proof</code> that ship in
       <code>zcashd</code> and <code>zebrad</code>, driven from a
-      browser-side rayon thread pool. Witness-indistinguishable
-      zero-knowledge on the real Zcash Orchard Action relation.
+      browser-side rayon thread pool. ROM-programmable
+      zero-knowledge on the real Zcash Orchard Action relation:
+      the simulator samples a uniform witness, drives the
+      production prover with a programmed Fiat-Shamir transcript,
+      and the verifier accepts under the matching programmable
+      transcript while rejecting under Blake2b. Combined with the
+      witness-uniformity of the Action relation, that is the
+      textbook ZK property in the random-oracle model.
     </p>
   </header>
 

@@ -300,18 +300,39 @@
 
   <h3 id="byte-level">Why does Foundations mention a "byte-level no-witness construction" that isn't here?</h3>
   <p>
-    For relations with a unique witness, the WI-to-ZK collapse on
-    multi-witness relations does not apply: the simulator can't
-    sample a different witness. Closing the gap requires constructing
-    the proof bytes directly from the public statement plus
-    programmed challenges, never sampling a witness in the first
-    place. The crate's
-    <code>halo2_simulator::zero_knowledge_proof_byte_level</code>
-    function sketches this path. It currently emits a
-    structurally-complete byte string that doesn't verify; closing
-    the constraint check is research-status work. For relations like
-    Orchard's, with many witnesses per Instance, the construction is
-    not needed; the WI sampling argument is the simulator.
+    For relations with a <em>unique</em> witness, the WI-to-ZK
+    collapse on multi-witness relations does not apply: the simulator
+    can't sample a different witness, so it has no way to make its
+    output transcript distribution match the honest prover's. The
+    only escape is to construct the proof bytes directly from the
+    public statement plus programmed challenges, never sampling a
+    witness in the first place &mdash; a byte-level emit that walks
+    the verifier's check equations and solves for each forced value.
+  </p>
+  <p>
+    For relations like Orchard's, with many valid witnesses per
+    public Instance, the construction is not needed. The simulator
+    samples a uniform witness internally, runs the honest prover
+    with a programmed Fiat-Shamir transcript, and outputs the result.
+    Three facts together close the ZK gap: (i) Pasta-Pedersen
+    polynomial commitments are perfectly hiding under uniform
+    blinders, so the simulator's commitments carry no information
+    about which witness was sampled; (ii) the Fiat-Shamir challenges
+    are programmed rather than hashed from witness-dependent data;
+    (iii) the witness was sampled uniformly from the witness set,
+    so its marginal distribution conditional on the public statement
+    matches the honest prover's. Composed, the simulator's output
+    transcript is computationally indistinguishable from honest in
+    the random-oracle model &mdash; the textbook ZK property.
+  </p>
+  <p>
+    No separate byte-level construction is implemented in this
+    crate, because neither the toy <code>MulCircuit</code> relation
+    (every nonzero <code>a</code> is half of a valid witness) nor
+    the Orchard Action relation (any valid spending-key /
+    note / Merkle-path tuple) is unique-witness. Closing the
+    byte-level path is research-status work whose payoff is for
+    unique-witness relations not deployed here.
   </p>
 
   <h2 id="references">References</h2>

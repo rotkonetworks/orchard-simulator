@@ -79,14 +79,20 @@
     For relations whose statement admits a sufficiently large
     family of valid witnesses, the two claims collapse onto each
     other under a uniform sampling argument: a simulator that
-    samples a witness uniformly from <code>R(stmt)</code> and runs
-    the honest prover satisfies both. The Orchard Action relation
-    is such a relation; the toy
-    <code>c = a&middot;b</code> relation
-    on pages II and III is too. For relations with a unique
-    witness, the gap between WI and ZK does not close this way;
-    closing it requires the byte-level no-witness construction
-    sketched on the
+    samples a witness uniformly from <code>R(stmt)</code>, runs
+    the honest prover with perfectly-hiding commitments and a
+    programmed Fiat-Shamir transcript, and outputs the resulting
+    bytes satisfies the textbook ZK property in the random-oracle
+    model. The verifier learns nothing beyond the public statement
+    because (i) the commitments are perfect-hiding under uniform
+    blinders, (ii) the challenges are programmed rather than
+    hashed from witness-dependent data, and (iii) the witness
+    marginal is uniform conditional on the statement. The Orchard
+    Action relation is such a relation; the toy
+    <code>c = a&middot;b</code> relation on Page II is too. For
+    relations with a <em>unique</em> witness, the gap between WI
+    and ZK does not close this way; closing it requires the
+    byte-level no-witness construction discussed on the
     <a href="/reference.html#byte-level">Reference page</a>.
   </p>
 

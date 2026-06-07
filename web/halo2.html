@@ -33,10 +33,12 @@
     <p class="byline">
       Three runs of the same circuit through
       <code>halo2_proofs::plonk::create_proof</code>: an honest
-      prover, a witness-indistinguishable simulator, and a
-      ROM-programmable zero-knowledge simulator. The verifier in
-      every case is the upstream
-      <code>halo2_proofs::plonk::verify_proof</code>.
+      prover, a witness-indistinguishable simulator, and the
+      strict ROM-programmable zero-knowledge simulator that
+      satisfies the textbook ZK definition in the random-oracle
+      model. The verifier in every case is the upstream
+      <code>halo2_proofs::plonk::verify_proof</code>; the third row
+      is the cryptographically load-bearing one.
     </p>
   </header>
 

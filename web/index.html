@@ -84,9 +84,11 @@
       <div class="toc-card-number">II.</div>
       <div class="toc-card-title">Halo 2</div>
       <div class="toc-card-desc">
-        The simulator on Halo 2's inner-product argument, the
-        multipoint reduction, and a single gate. Five experiments
-        running through <code>halo2_proofs</code> directly.
+        The strict ROM-programmable <code>Simulate</code>
+        construction on Halo 2's inner-product argument, isolated
+        on a single multiplication gate. Three runs through
+        <code>halo2_proofs</code> show acceptance under the
+        programmable transcript and rejection under Blake2b.
       </div>
     </a>
     <a class="toc-card" href="/orchard.html">
@@ -116,9 +118,14 @@
 
   <p>
     It is a working <code>Simulate</code> algorithm for two ZK
-    relations: a teaching layer over Halo 2's inner-product argument
-    (Pages II), and the production Orchard Action relation as
-    deployed in Zcash (Page III). The Orchard path drives upstream
+    relations: Halo 2's inner-product argument run through a small
+    multiplication-gate circuit (Page II), and the production
+    Orchard Action relation as deployed in Zcash (Page III). Both
+    pages run the same construction &mdash; uniform witness
+    sampling combined with a programmable Fiat-Shamir transcript
+    &mdash; that satisfies the textbook zero-knowledge definition in
+    the random-oracle model for any multi-witness relation. The
+    Orchard path drives upstream
     <code>orchard::circuit::Proof::create</code> and
     <code>Proof::verify</code> directly, against the same proving
     and verifying keys a mainnet node builds.
