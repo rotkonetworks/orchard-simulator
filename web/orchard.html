@@ -46,13 +46,15 @@
     rcv)</code> satisfying the on-chain constraints: the spent
     note's commitment must be in the Merkle tree at the claimed
     anchor, the nullifier must equal
-    <code>PRF<sub>nk</sub>(&rho;, &psi;, cm)</code>, the value
+    <code>Extract<sub>P</sub>([PRF<sup>nfOrchard</sup><sub>nk</sub>(&rho;) +
+    &psi;]&middot;K<sup>Orchard</sup> + cm)</code>, the value
     commitment must be a Pedersen commitment to
     <code>(spend &minus; output)</code> with trapdoor
     <code>rcv</code>, and so on. The
     <a href="https://zips.z.cash/protocol/protocol.pdf"
        rel="noopener">Zcash protocol specification</a> documents
-    the full relation in section 4.7.
+    the full relation in section 4.18.4 ("Action Statement
+    (Orchard)").
   </p>
 
   <p>
@@ -61,12 +63,14 @@
     from it, runs <code>halo2_proofs::plonk::create_proof</code>,
     and presents the resulting 4992 bytes to the production
     <code>orchard::circuit::Proof::verify</code>. The verifier
-    accepts. Two patches to the upstream
-    <code>orchard</code> crate expose
-    <code>ProvingKey::inner()</code> and
-    <code>VerifyingKey::inner()</code> so the same path can also
-    run with a programmable Fiat-Shamir transcript; otherwise
-    nothing in <code>orchard</code> or
+    accepts. A small downstream patch on the upstream
+    <code>orchard</code> crate exposes six read-only accessors
+    (<code>ProvingKey::{inner,params}</code>,
+    <code>VerifyingKey::{inner,params}</code>,
+    <code>Instance::to_halo2_instance</code>,
+    <code>SigningMetadata::{alpha,is_dummy}</code>) so the same
+    path can also run with a programmable Fiat-Shamir transcript;
+    otherwise nothing in <code>orchard</code> or
     <code>halo2_proofs</code> is modified.
   </p>
 

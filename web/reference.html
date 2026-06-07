@@ -156,8 +156,9 @@
 
   <p>
     Terms used throughout the <a href="/orchard.html">Orchard
-    page</a>. The Zcash protocol specification defines each in
-    section 4.7.
+    page</a>. The Zcash protocol specification defines them
+    across &sect;3 (Concepts) and &sect;4 (Abstract Protocol); the
+    Action ZK relation that ties them together is section 4.18.4.
   </p>
 
   <dl class="glossary">
@@ -177,12 +178,15 @@
 
     <dt>nf_old</dt>
     <dd>The nullifier:
-    <code>PRF<sub>nk</sub>(&rho;, &psi;, cm)</code>. A
-    deterministic function of the spent note plus the spender's
-    viewing key. Adding it to the Orchard nullifier set prevents
-    double-spending. Without the viewing key no outside observer can
-    link the nullifier to the spent note; with it, the spender can
-    prove the link.</dd>
+    <code>nf = Extract<sub>P</sub>([PRF<sup>nfOrchard</sup><sub>nk</sub>(&rho;) +
+    &psi;]&middot;K<sup>Orchard</sup> + cm)</code>. A deterministic
+    function of the spent note plus the spender's viewing key:
+    Poseidon-based PRF on &rho;, blinded by &psi;, fixed-base
+    scalar mul of <code>K<sup>Orchard</sup></code>, point-add with
+    the note commitment, take the x-coordinate. Adding the result
+    to the Orchard nullifier set prevents double-spending. Without
+    the viewing key no outside observer can link the nullifier to
+    the spent note; with it, the spender can prove the link.</dd>
 
     <dt>rk</dt>
     <dd>The spend-authorization verification key
@@ -258,11 +262,14 @@
     <code>zcashd</code> and
     <code>zebrad</code> link against. The simulator's contribution
     is sampling a witness uniformly and driving the production
-    prover with it. Two minor patches expose
-    <code>ProvingKey::inner()</code> and
-    <code>VerifyingKey::inner()</code> so a programmable transcript
-    can be plumbed in; otherwise the only available path uses
-    Blake2b.
+    prover with it. A small downstream patch exposes six read-only
+    accessors (<code>ProvingKey::{inner,params}</code>,
+    <code>VerifyingKey::{inner,params}</code>,
+    <code>Instance::to_halo2_instance</code>,
+    <code>SigningMetadata::{alpha,is_dummy}</code>) so a
+    programmable transcript can be plumbed in and external
+    verifiers can build the per-column instance scalars; otherwise
+    the only available path uses Blake2b.
   </p>
 
   <h3>Could I use this to fake a Zcash transaction?</h3>
@@ -348,8 +355,11 @@
     <li>
       <strong>Zcash protocol specification.</strong>
       <a href="https://zips.z.cash/protocol/protocol.pdf" rel="noopener">zips.z.cash/protocol/protocol.pdf</a>.
-      Section 4.7 documents the Orchard Action transfer; section
-      5.4 documents the binding signature and spend-auth signature.
+      Section 3.7 introduces Action transfers; section 4.6 defines
+      the Action description data structure; section 4.18.4 is the
+      Action ZK relation the simulator proves. Sections 4.14 and
+      4.15 specify the binding and spend-authorization signatures
+      abstractly; section 5.4.7 instantiates them as RedPallas.
     </li>
     <li>
       <strong>ZIP 244: Transaction Identifier
@@ -372,18 +382,21 @@
     Every part of these pages is reproducible from a clean checkout.
     The crate is pure Rust plus a small JS glue layer. The
     real-Orchard path uses the upstream <code>orchard</code> and
-    <code>halo2_proofs</code> crates plus two small upstream patches
-    to expose <code>ProvingKey::inner()</code> and
-    <code>VerifyingKey::inner()</code>.
+    <code>halo2_proofs</code> crates plus a small downstream patch
+    that exposes six read-only accessors
+    (<code>ProvingKey::{inner,params}</code>,
+    <code>VerifyingKey::{inner,params}</code>,
+    <code>Instance::to_halo2_instance</code>,
+    <code>SigningMetadata::{alpha,is_dummy}</code>).
   </p>
 
   <h3>Fast tests (about 3 seconds)</h3>
   <pre><code>cargo test --features orchard</code></pre>
   <p>
-    14 tests exercising the IPA, MulCircuit halo2 paths, and signed
-    bundle construction. None of these run the real Orchard prover
-    (gated under <code>#[ignore]</code> so the default run stays
-    fast).
+    9 tests exercising the IPA, MulCircuit halo2 paths, and the
+    proof byte-structure measurement. None of these run the real
+    Orchard prover (gated under <code>#[ignore]</code> so the
+    default run stays fast).
   </p>
 
   <h3>Real Orchard tests (about 2.5 minutes)</h3>
@@ -412,7 +425,8 @@ bash build-wasm-parallel.sh
 (cd web &amp;&amp; python3 serve.py 8000)
 xdg-open http://localhost:8000</code></pre>
   <p>
-    Builds a ~7 MB parallel WASM module via
+    Builds a ~9 MB parallel WASM module (~7 MB once shrunk by
+    <code>wasm-opt -O3</code>) via
     <code>wasm-bindgen-rayon</code> so halo2's FFT and MSM steps
     inside <code>Proof::create</code> dispatch across a
     <code>SharedArrayBuffer</code>-backed pool of inner Web Workers.
