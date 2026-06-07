@@ -23,6 +23,7 @@ import init, {
   orchard_signed_bundle_demo,
   orchard_last_proof_full_hex,
   orchard_verify_external_against_last_instance,
+  run_orchard_programmable_demo,
 } from './pkg-parallel/orchard_simulator.js';
 
 let wasmReady = false;
