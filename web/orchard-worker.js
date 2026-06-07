@@ -20,6 +20,7 @@ import init, {
   orchard_signed_bundle_demo,
   orchard_last_proof_full_hex,
   orchard_verify_external_against_last_instance,
+  run_orchard_programmable_demo,
 } from './pkg/orchard_simulator.js';
 
 let wasmReady = false;
@@ -211,6 +212,22 @@ self.onmessage = async (e) => {
         elapsedMs: result.prove_ms,
       });
       self.postMessage({ type: 'two-proofs-done', result });
+      return;
+    }
+
+    if (type === 'programmable-demo') {
+      await ensureInit();
+      const seedBig = BigInt(Number(e.data.seed) >>> 0);
+      self.postMessage({
+        type: 'stage-start', stages: [3],
+        label: 'strict ROM-programmable simulator on production Orchard',
+      });
+      const result = run_orchard_programmable_demo(seedBig);
+      self.postMessage({
+        type: 'stage-done', stages: [3],
+        elapsedMs: result.prove_ms,
+      });
+      self.postMessage({ type: 'programmable-demo-done', result });
       return;
     }
 

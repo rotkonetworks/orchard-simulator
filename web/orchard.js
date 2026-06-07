@@ -41,6 +41,12 @@ const els = {
   twoBHex:       el('orch-two-proofs-b-hex'),
   twoXorHex:     el('orch-two-proofs-xor-hex'),
 
+  progRun:       el('orch-prog-run'),
+  progOutput:    el('orch-prog-output'),
+  progVerdict:   el('orch-prog-verdict'),
+  progHeadline:  el('orch-prog-headline'),
+  progSub:       el('orch-prog-sub'),
+
   bundleRun:     el('orch-bundle-run'),
   bundleOutput:  el('orch-bundle-output'),
   bundleVerdict: el('orch-bundle-verdict'),
@@ -172,7 +178,7 @@ function setStatus(text, kind) {
 }
 
 function enableRunButtons(enabled) {
-  for (const b of [els.run, els.runBatch, els.twoRun, els.bundleRun, els.externalRun, els.externalPaste]) {
+  for (const b of [els.run, els.runBatch, els.twoRun, els.progRun, els.bundleRun, els.externalRun, els.externalPaste]) {
     if (b) b.disabled = !enabled;
   }
 }
@@ -261,6 +267,10 @@ function onMessage(e) {
         pendingAfterKeygen = null;
         startProgress(`two proofs same witness (seed=${pendingTwoSeed})`);
         orchardWorker.postMessage({ type: 'two-proofs', seed: pendingTwoSeed });
+      } else if (pendingAfterKeygen === 'programmable-demo') {
+        pendingAfterKeygen = null;
+        startProgress(`strict ROM-programmable simulator (seed=${pendingProgSeed})`);
+        orchardWorker.postMessage({ type: 'programmable-demo', seed: pendingProgSeed });
       } else if (pendingAfterKeygen === 'signed-bundle') {
         pendingAfterKeygen = null;
         startProgress(`build + sign Bundle<Authorized> (seed=${pendingBundleSeed}, outputs=${pendingBundleNumOutputs})`);
@@ -303,6 +313,11 @@ function onMessage(e) {
     case 'two-proofs-done':
       stopProgress();
       renderTwoProofs(m.result);
+      enableRunButtons(true);
+      return;
+    case 'programmable-demo-done':
+      stopProgress();
+      renderProgrammableDemo(m.result);
       enableRunButtons(true);
       return;
     case 'signed-bundle-done':
@@ -795,6 +810,59 @@ function runTwoProofs() {
   }
 }
 
+let pendingProgSeed = null;
+
+function runProgrammableDemo() {
+  if (!els.progRun) return;
+  enableRunButtons(false);
+  const w = ensureWorker();
+  if (!w) { enableRunButtons(true); return; }
+  const seed = randomSeed();
+  clearStages();
+  if (!orchardKeygenDone) {
+    pendingAfterKeygen = 'programmable-demo';
+    pendingProgSeed = seed;
+    startProgress('building Orchard ProvingKey + VerifyingKey');
+    w.postMessage({ type: 'keygen' });
+  } else {
+    startProgress(`strict ROM-programmable simulator (seed=${seed})`);
+    w.postMessage({ type: 'programmable-demo', seed });
+  }
+}
+
+function renderProgrammableDemo(result) {
+  if (!els.progOutput) return;
+  els.progOutput.hidden = false;
+
+  const passes = result.verified_programmable && !result.verified_blake2b;
+  setVerdict(els.progVerdict, passes);
+  if (passes) {
+    els.progHeadline.textContent = "Strict ROM-ZK acceptance pattern confirmed.";
+    els.progSub.textContent =
+      "Verifier accepted under the programmed transcript and rejected under Blake2b -- exactly what a strict ROM-ZK simulator produces.";
+  } else if (result.verified_programmable && result.verified_blake2b) {
+    els.progHeadline.textContent = "Both transcripts accepted (unexpected).";
+    els.progSub.textContent =
+      "Bytes verified under both transcripts; soundness boundary not reached.";
+  } else if (!result.verified_programmable) {
+    els.progHeadline.textContent = "Programmable verifier rejected.";
+    els.progSub.textContent =
+      "Something is off with the transcript shim; investigate.";
+  }
+
+  const setText = (id, txt) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = txt;
+  };
+  setText('orch-prog-chal-count', String(result.challenge_count));
+  setText('orch-prog-bytes-len', `${result.proof_bytes_len} bytes`);
+  setText('orch-prog-vp', result.verified_programmable ? 'accept' : 'reject');
+  setText('orch-prog-vb', result.verified_blake2b ? 'accept' : 'reject');
+  setText('orch-prog-prove-ms', `${result.prove_ms} ms`);
+  setText('orch-prog-head', result.proof_head_hex || '-');
+  setText('orch-prog-tail', result.proof_tail_hex || '-');
+}
+
 function runSignedBundle() {
   if (!els.bundleRun) return;
   enableRunButtons(false);
@@ -830,6 +898,7 @@ function tamperByte(index) {
 els.run?.addEventListener('click', runOnce);
 els.runBatch?.addEventListener('click', runBatch);
 els.twoRun?.addEventListener('click', runTwoProofs);
+els.progRun?.addEventListener('click', runProgrammableDemo);
 els.bundleRun?.addEventListener('click', runSignedBundle);
 els.tamperHead?.addEventListener('click', () => tamperByte(0));
 els.tamperMid?.addEventListener('click', () => tamperByte(2496));

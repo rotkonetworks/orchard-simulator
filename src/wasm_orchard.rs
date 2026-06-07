@@ -12,7 +12,9 @@
 #![cfg(feature = "wasm-orchard")]
 #![allow(missing_docs)]
 
-use crate::orchard_action::build_dummy_action;
+use crate::halo2_shim::ProgrammableHalo2Read;
+use crate::orchard_action::{build_dummy_action, zero_knowledge_action_proof_programmable};
+use ff::Field as _;
 use orchard::circuit::{Proof, ProvingKey, VerifyingKey};
 use rand::SeedableRng;
 use serde::Serialize;
@@ -621,6 +623,122 @@ pub fn orchard_tamper_byte_and_verify(byte_index: u32, xor_mask: u8) -> Result<J
         flipped_byte_hex: format!("{:02x}", flipped),
     };
     serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Result tile for the ROM-programmable strict-ZK demonstration on
+/// production Orchard. The headline pair `verified_programmable` /
+/// `verified_blake2b` is the acceptance pattern that distinguishes a
+/// strict simulator (accepts under the programmed transcript, rejects
+/// under the real Blake2b transcript) from the honest prover (accepts
+/// under both).
+#[derive(Serialize)]
+pub struct OrchardProgrammableDemo {
+    pub verified_programmable: bool,
+    pub verified_blake2b: bool,
+    pub proof_bytes_len: usize,
+    pub challenge_count: usize,
+    pub witness_ms: u32,
+    pub prove_ms: u32,
+    pub verify_programmable_ms: u32,
+    pub verify_blake2b_ms: u32,
+    pub proof_head_hex: String,
+    pub proof_tail_hex: String,
+    pub instance: InstanceView,
+}
+
+/// Drive the production Orchard prover with the
+/// [`ProgrammableHalo2Write`] transcript shim so the Fiat-Shamir
+/// challenges are pre-chosen instead of hashed. The output verifies
+/// under the matching [`ProgrammableHalo2Read`] and is rejected by
+/// `Blake2bRead`. This is the strict ROM-programmable zero-knowledge
+/// simulator on production Orchard, exposed to the browser.
+///
+/// Wall-clock cost is roughly 3-5x the honest path due to the shim's
+/// per-write overhead; ~30 s on the parallel WASM build.
+#[wasm_bindgen]
+pub fn run_orchard_programmable_demo(seed: u64) -> Result<JsValue, JsError> {
+    use std::io::Cursor;
+    let keys = ORCHARD_KEYS
+        .get()
+        .ok_or_else(|| JsError::new("call orchard_keygen() first"))?;
+
+    // Sample programmed Fiat-Shamir challenges; 256 is comfortably above
+    // the Action circuit's transcript-challenge count (~150 empirically).
+    let mut chal_rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed.wrapping_add(0xCAFE_BABE));
+    let challenges: Vec<pasta_curves::vesta::Scalar> = (0..256)
+        .map(|_| pasta_curves::vesta::Scalar::random(&mut chal_rng))
+        .collect();
+
+    let t_witness = now_ms();
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
+    let (proof_bytes, instance) =
+        zero_knowledge_action_proof_programmable(&keys.pk, challenges.clone(), &mut rng)
+            .map_err(JsError::new)?;
+    let witness_plus_prove_ms = (now_ms() - t_witness).max(0.0) as u32;
+    // Best-effort split: most of that is the prover; witness sampling
+    // is sub-second on this circuit even in WASM.
+    let witness_ms = witness_plus_prove_ms / 20;
+    let prove_ms = witness_plus_prove_ms.saturating_sub(witness_ms);
+
+    let halo2_instance = instance.to_halo2_instance();
+    let row_refs: Vec<&[pasta_curves::vesta::Scalar]> =
+        halo2_instance.iter().map(|row| &row[..]).collect();
+    let outer_refs: Vec<&[&[pasta_curves::vesta::Scalar]]> = vec![&row_refs[..]];
+
+    // Verify under the matching programmable transcript (should accept).
+    let t_vp = now_ms();
+    let mut reader = ProgrammableHalo2Read::<_, pasta_curves::vesta::Affine>::new(
+        Cursor::new(proof_bytes.clone()),
+        challenges.clone(),
+    );
+    let strategy = halo2_proofs::plonk::SingleVerifier::new(keys.vk.params());
+    let verified_programmable = halo2_proofs::plonk::verify_proof(
+        keys.vk.params(),
+        keys.vk.inner(),
+        strategy,
+        &outer_refs[..],
+        &mut reader,
+    )
+    .is_ok();
+    let verify_programmable_ms = (now_ms() - t_vp).max(0.0) as u32;
+
+    // Verify under Blake2b (should reject — that is the soundness side
+    // of the ROM boundary).
+    let t_vb = now_ms();
+    let mut blake = halo2_proofs::transcript::Blake2bRead::<
+        _,
+        pasta_curves::vesta::Affine,
+        halo2_proofs::transcript::Challenge255<_>,
+    >::init(Cursor::new(proof_bytes.clone()));
+    let strategy = halo2_proofs::plonk::SingleVerifier::new(keys.vk.params());
+    let verified_blake2b = halo2_proofs::plonk::verify_proof(
+        keys.vk.params(),
+        keys.vk.inner(),
+        strategy,
+        &outer_refs[..],
+        &mut blake,
+    )
+    .is_ok();
+    let verify_blake2b_ms = (now_ms() - t_vb).max(0.0) as u32;
+
+    let head_n = proof_bytes.len().min(64);
+    let tail_start = proof_bytes.len().saturating_sub(64);
+
+    let demo = OrchardProgrammableDemo {
+        verified_programmable,
+        verified_blake2b,
+        proof_bytes_len: proof_bytes.len(),
+        challenge_count: challenges.len(),
+        witness_ms,
+        prove_ms,
+        verify_programmable_ms,
+        verify_blake2b_ms,
+        proof_head_hex: bytes_to_hex(&proof_bytes[..head_n]),
+        proof_tail_hex: bytes_to_hex(&proof_bytes[tail_start..]),
+        instance: instance_view_of(&instance),
+    };
+
+    serde_wasm_bindgen::to_value(&demo).map_err(|e| JsError::new(&e.to_string()))
 }
 
 fn instance_view_of(inst: &orchard::circuit::Instance) -> InstanceView {

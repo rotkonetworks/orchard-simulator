@@ -219,6 +219,22 @@ self.onmessage = async (e) => {
       return;
     }
 
+    if (type === 'programmable-demo') {
+      await ensureInit();
+      const seedBig = BigInt(Number(e.data.seed) >>> 0);
+      self.postMessage({
+        type: 'stage-start', stages: [3],
+        label: `strict ROM-programmable simulator (rayon, ${threadCount} threads)`,
+      });
+      const result = run_orchard_programmable_demo(seedBig);
+      self.postMessage({
+        type: 'stage-done', stages: [3],
+        elapsedMs: result.prove_ms,
+      });
+      self.postMessage({ type: 'programmable-demo-done', result });
+      return;
+    }
+
     self.postMessage({ type: 'error', message: `unknown message type: ${type}` });
   } catch (err) {
     self.postMessage({ type: 'error', message: String(err && err.message ? err.message : err) });

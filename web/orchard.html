@@ -340,6 +340,48 @@
       </div>
     </div>
 
+    <h2 id="strict-zk">Strict ROM-programmable ZK</h2>
+    <p>
+      The runs above use Halo 2's default
+      <code>Blake2bWrite</code> transcript: the simulator samples a
+      uniform witness internally and the honest prover hashes the
+      transcript as usual. That already satisfies the textbook ZK
+      property under the witness-uniformity argument (see
+      <a href="/reference.html#byte-level">Reference</a>), but the
+      cryptographic move is more visible if we make the
+      Fiat-Shamir random oracle programmable. The button below
+      drives the same production prover with a
+      <code>ProgrammableHalo2Write</code> transcript instead: 256
+      Pasta-scalar challenges are picked uniformly at random in
+      advance, the prover reads them off the queue instead of
+      hashing, and the verifier accepts under the matching
+      <code>ProgrammableHalo2Read</code> while
+      <code>Blake2bRead</code> rejects. The acceptance under
+      programmable plus rejection under Blake2b is the
+      cryptographic signature of a strict ROM-ZK simulator.
+    </p>
+    <div class="run-strip">
+      <button id="orch-prog-run" type="button" disabled>Run with programmable transcript</button>
+    </div>
+    <div id="orch-prog-output" hidden>
+      <div class="verdict-tile" id="orch-prog-verdict">
+        <div class="icon" aria-hidden="true"></div>
+        <div>
+          <div class="verdict-headline" id="orch-prog-headline"></div>
+          <div class="verdict-sub" id="orch-prog-sub"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hex-field"><span class="hex-field-name">programmed challenges</span><span class="hex-field-value"><code id="orch-prog-chal-count">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">proof bytes</span><span class="hex-field-value"><code id="orch-prog-bytes-len">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">verify under programmable</span><span class="hex-field-value"><code id="orch-prog-vp">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">verify under Blake2b</span><span class="hex-field-value"><code id="orch-prog-vb">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">prove time</span><span class="hex-field-value"><code id="orch-prog-prove-ms">-</code></span><span></span></div>
+        <div class="hex-field"><span class="hex-field-name">head (64 B)</span><span class="hex-field-value"><code id="orch-prog-head">-</code></span><button class="copy-btn" data-copy-target="orch-prog-head" type="button">copy</button></div>
+        <div class="hex-field"><span class="hex-field-name">tail (64 B)</span><span class="hex-field-value"><code id="orch-prog-tail">-</code></span><button class="copy-btn" data-copy-target="orch-prog-tail" type="button">copy</button></div>
+      </div>
+    </div>
+
     <h2>The full bundle</h2>
     <p>
       The proof is one component of an Orchard bundle. A v5 Zcash
